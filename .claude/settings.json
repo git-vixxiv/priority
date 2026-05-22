@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "google-sheets": {
+      "command": "uvx",
+      "args": ["mcp-gsheet"],
+      "env": {
+        "GOOGLE_CREDENTIALS_PATH": "${GOOGLE_SHEETS_CREDENTIALS_PATH}",
+        "SPREADSHEET_ID": "${PRIORITY_SPREADSHEET_ID}"
+      }
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(pip3:*)",
+      "Bash(pip:*)",
+      "Bash(uvx:*)",
+      "Bash(uv:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)"
+    ]
+  }
+}
