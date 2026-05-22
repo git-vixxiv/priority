@@ -1,0 +1,32 @@
+# Priority Engine — Default Configuration
+# Override any of these with environment variables.
+
+sheet:
+  tab_name: "Priorities"          # PRIORITY_SHEET_TAB
+  credentials_path: ""            # GOOGLE_SHEETS_CREDENTIALS_PATH
+  spreadsheet_id: ""              # PRIORITY_SPREADSHEET_ID
+
+scoring:
+  fibonacci_scale: [1, 2, 3, 5, 8, 13, 20, 40, 100]
+  decompose_threshold: 13         # Job_Size >= this triggers decomposition-agent
+  downstream_weight: 0.5          # Multiplier for successor WSJF rollup
+  bottleneck_inflate_threshold: 50  # Bottleneck score above this inflates priority
+  bottleneck_inflate_bonus: 25.0  # Flat Adjusted_WSJF bonus for qualifying bottlenecks
+
+# Baseline task used for relative scoring calibration.
+# When evaluation-agent scores a new task, it compares against this baseline (all 3s).
+baseline:
+  Value_Score: 3
+  Time_Criticality: 3
+  RR_OE_Score: 3
+  Job_Size: 3
+  Base_WSJF: 3.0
+
+agents:
+  decomposition_trigger_job_size: 13
+  evaluation_auto_trigger: true   # Auto-invoke evaluation-agent on `add`
+  detective_auto_trigger: true    # Auto-invoke dependency-detective on task completion
+
+routines:
+  daily_resequence_enabled: false   # Enable for Phase 2 (cloud routines)
+  daily_resequence_time: "02:00"    # Local time for scheduled re-analysis

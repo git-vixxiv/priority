@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+token.json
+credentials.json
+*.egg-info/
+dist/
+build/
+.DS_Store
+report_*.md
+data/priorities.json
