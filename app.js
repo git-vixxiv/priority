@@ -1,9 +1,5 @@
 'use strict';
 
-// ────────────────────────────────────────────────────────────────────────────────
-// ALGORITHMS  (WSJF · DAG · CPM — all run in the browser)
-// ────────────────────────────────────────────────────────────────────────────────
-
 const FIBS = [1, 2, 3, 5, 8, 13, 20, 40, 100];
 
 function buildGraph(tasks) {
@@ -111,10 +107,6 @@ function runAnalysis(allTasks) {
   return { ranked: [...active, ...done], cp, cpDur };
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// STORAGE  (localStorage)
-// ────────────────────────────────────────────────────────────────────────────────
-
 const DB = {
   KEY: 'priority_v1',
 
@@ -159,10 +151,6 @@ const DB = {
   },
 };
 
-// ────────────────────────────────────────────────────────────────────────────────
-// STATE
-// ────────────────────────────────────────────────────────────────────────────────
-
 const state = {
   tasks:       [],
   cp:          [],
@@ -171,10 +159,6 @@ const state = {
   editingId:   null,
   scores:      { Value_Score: 3, Time_Criticality: 3, RR_OE_Score: 3, Job_Size: 3 },
 };
-
-// ────────────────────────────────────────────────────────────────────────────────
-// LOAD & RENDER
-// ────────────────────────────────────────────────────────────────────────────────
 
 function loadAndRender() {
   state.tasks = DB.load();
@@ -190,30 +174,26 @@ function render() {
 function renderHeader() {
   const active    = state.tasks.filter(t => !['Completed', 'Deferred'].includes(t.Status)).length;
   const completed = state.tasks.filter(t => t.Status === 'Completed').length;
-  $('header-stats').innerHTML = `
-    <div class="stat"><span class="stat-value">${active}</span> active</div>
-    <div class="stat"><span class="stat-value">${completed}</span> completed</div>
-    ${state.lastAnalyzed
-      ? `<div class="stat">analyzed <span class="stat-value">${state.lastAnalyzed}</span></div>`
-      : ''}
-  `;
+  document.getElementById('header-stats').innerHTML = [
+    '<div class="stat"><span class="stat-value">' + active + '</span> active</div>',
+    '<div class="stat"><span class="stat-value">' + completed + '</span> completed</div>',
+    state.lastAnalyzed ? '<div class="stat">analyzed <span class="stat-value">' + state.lastAnalyzed + '</span></div>' : ''
+  ].join('');
 }
 
 function renderBanner() {
-  const el = $('analysis-banner');
+  const el = document.getElementById('analysis-banner');
   if (!state.cp.length) { el.classList.add('hidden'); return; }
   el.classList.remove('hidden');
-  el.innerHTML = `
-    <strong>⚡ Analysis complete</strong>
-    Critical path: ${state.cp.map(id => `<span class="cp-tag">${esc(id)}</span>`).join(' → ')}
-    <span style="color:#4338ca">(${state.cpDur} days total)</span>
-    <span style="color:#6366f1;font-size:12px"> — any delay here delays everything downstream</span>
-  `;
+  el.innerHTML = '<strong>&#9889; Analysis complete</strong> Critical path: ' +
+    state.cp.map(function(id) { return '<span class="cp-tag">' + esc(id) + '</span>'; }).join(' &rarr; ') +
+    ' <span style="color:#4338ca">(' + state.cpDur + ' days total)</span>' +
+    ' <span style="color:#6366f1;font-size:12px"> &mdash; any delay here delays everything downstream</span>';
 }
 
 function renderTaskList() {
-  const list  = $('task-list');
-  const empty = $('empty-state');
+  var list  = document.getElementById('task-list');
+  var empty = document.getElementById('empty-state');
 
   if (!state.tasks.length) {
     list.classList.add('hidden');
@@ -224,88 +204,84 @@ function renderTaskList() {
   empty.classList.add('hidden');
   list.classList.remove('hidden');
 
-  let rank = 0;
-  list.innerHTML = state.tasks.map(task => {
-    const isDone = ['Completed', 'Deferred'].includes(task.Status);
+  var rank = 0;
+  list.innerHTML = state.tasks.map(function(task) {
+    var isDone = task.Status === 'Completed' || task.Status === 'Deferred';
     if (!isDone) rank++;
 
-    const adj  = parseFloat(task.Adjusted_WSJF || task.Base_WSJF || 0);
-    const base = parseFloat(task.Base_WSJF || 0);
-    const lift = adj - base;
-    const dominoTag = lift > 0.5
-      ? `<span class="domino-tag" title="Adjusted up by ${lift.toFixed(2)} because it unblocks downstream tasks">↑${lift.toFixed(1)} domino</span>`
+    var adj  = parseFloat(task.Adjusted_WSJF || task.Base_WSJF || 0);
+    var base = parseFloat(task.Base_WSJF || 0);
+    var lift = adj - base;
+    var dominoTag = lift > 0.5
+      ? '<span class="domino-tag" title="Adjusted up by ' + lift.toFixed(2) + ' because it unblocks downstream tasks">&uarr;' + lift.toFixed(1) + ' domino</span>'
       : '';
 
-    const flags = [
-      task._on_critical_path ? `<span class="flag flag-cp">★ critical path</span>` : '',
-      task._decompose_flag   ? `<span class="flag flag-decomp">↓ decompose</span>`  : '',
-      task._bottleneck_flag  ? `<span class="flag flag-bn">⚠ bottleneck</span>`      : '',
+    var flags = [
+      task._on_critical_path ? '<span class="flag flag-cp">&#9733; critical path</span>' : '',
+      task._decompose_flag   ? '<span class="flag flag-decomp">&darr; decompose</span>'  : '',
+      task._bottleneck_flag  ? '<span class="flag flag-bn">&#9888; bottleneck</span>'    : '',
     ].filter(Boolean).join('');
 
-    const note = task.Notes
-      ? `<div class="task-note">${esc(task.Notes.slice(0, 100))}${task.Notes.length > 100 ? '…' : ''}</div>`
+    var note = task.Notes
+      ? '<div class="task-note">' + esc(task.Notes.slice(0, 100)) + (task.Notes.length > 100 ? '&hellip;' : '') + '</div>'
       : '';
 
-    return `
-      <div class="task-card ${isDone ? task.Status.toLowerCase().replace(' ', '-') : ''}"
-           data-id="${esc(task.Task_ID)}" onclick="openEdit('${esc(task.Task_ID)}}')">
+    var rankHtml = isDone
+      ? '<span class="task-rank no-rank">&mdash;</span>'
+      : '<span class="task-rank">' + rank + '</span>';
 
-        ${isDone
-          ? `<span class="task-rank no-rank">—</span>`
-          : `<span class="task-rank">${rank}</span>`}
+    var actionBtn = task.Status !== 'Completed'
+      ? '<button class="icon-btn" title="Mark complete" onclick="markDone(\'' + esc(task.Task_ID) + '\')">&check;</button>'
+      : '<button class="icon-btn" title="Reopen" onclick="reopen(\'' + esc(task.Task_ID) + '\')">&crarr;</button>';
 
-        <div class="task-main">
-          <div class="task-name-row">
-            <span class="task-name${isDone ? ' strike' : ''}" title="${esc(task.Task_Name)}">${esc(task.Task_Name)}</span>
-            ${task.Category ? `<span class="badge cat-badge">${esc(task.Category)}</span>` : ''}
-            <span class="badge ${statusClass(task.Status)}">${esc(task.Status)}</span>
-            ${flags}
-          </div>
-          <div class="task-meta">
-            <span class="wsjf-chip ${wsjfClass(adj)}">${adj.toFixed(2)}</span>
-            ${dominoTag}
-            <span class="task-score-row">V=${task.Value_Score||'?'} T=${task.Time_Criticality||'?'} R=${task.RR_OE_Score||'?'} / J=${task.Job_Size||'?'}</span>
-            ${task.Predecessor_IDs ? `<span style="font-size:11px;color:#9ca3af">after: ${esc(task.Predecessor_IDs)}</span>` : ''}
-          </div>
-          ${note}
-        </div>
+    var catBadge = task.Category ? '<span class="badge cat-badge">' + esc(task.Category) + '</span>' : '';
+    var statusBadge = '<span class="badge ' + statusClass(task.Status) + '">' + esc(task.Status) + '</span>';
+    var predSpan = task.Predecessor_IDs ? '<span style="font-size:11px;color:#9ca3af">after: ' + esc(task.Predecessor_IDs) + '</span>' : '';
 
-        <div class="task-actions" onclick="event.stopPropagation()">
-          ${task.Status !== 'Completed'
-            ? `<button class="icon-btn" title="Mark complete" onclick="markDone('${esc(task.Task_ID)}')">✓</button>`
-            : `<button class="icon-btn" title="Reopen"        onclick="reopen('${esc(task.Task_ID)}')">↩</button>`}
-        </div>
-      </div>`;
+    return '<div class="task-card ' + (isDone ? task.Status.toLowerCase().replace(' ', '-') : '') + '"' +
+      ' data-id="' + esc(task.Task_ID) + '" onclick="openEdit(\'' + esc(task.Task_ID) + '\')">\n' +
+      rankHtml + '\n' +
+      '<div class="task-main">\n' +
+      '<div class="task-name-row">' +
+      '<span class="task-name' + (isDone ? ' strike' : '') + '" title="' + esc(task.Task_Name) + '">' + esc(task.Task_Name) + '</span>' +
+      catBadge + statusBadge + flags +
+      '</div>\n' +
+      '<div class="task-meta">' +
+      '<span class="wsjf-chip ' + wsjfClass(adj) + '">' + adj.toFixed(2) + '</span>' +
+      dominoTag +
+      '<span class="task-score-row">V=' + (task.Value_Score||'?') + ' T=' + (task.Time_Criticality||'?') + ' R=' + (task.RR_OE_Score||'?') + ' / J=' + (task.Job_Size||'?') + '</span>' +
+      predSpan +
+      '</div>\n' +
+      note +
+      '</div>\n' +
+      '<div class="task-actions" onclick="event.stopPropagation()">' + actionBtn + '</div>\n' +
+      '</div>';
   }).join('');
 }
-
-// ────────────────────────────────────────────────────────────────────────────────
-// MODAL
-// ────────────────────────────────────────────────────────────────────────────────
 
 function openNew() {
   state.editingId = null;
   state.scores    = { Value_Score: 3, Time_Criticality: 3, RR_OE_Score: 3, Job_Size: 3 };
 
-  $('modal-title').textContent  = 'New Task';
-  $('btn-delete').style.display = 'none';
-  $('status-field').style.display = 'none';
+  document.getElementById('modal-title').textContent  = 'New Task';
+  document.getElementById('btn-delete').style.display = 'none';
+  document.getElementById('status-field').style.display = 'none';
 
-  $('f-name').value         = '';
-  $('f-category').value     = '';
-  $('f-status').value       = 'Backlog';
-  $('f-predecessors').value = '';
-  $('f-duration').value     = '';
-  $('f-notes').value        = '';
+  document.getElementById('f-name').value         = '';
+  document.getElementById('f-category').value     = '';
+  document.getElementById('f-status').value       = 'Backlog';
+  document.getElementById('f-predecessors').value = '';
+  document.getElementById('f-duration').value     = '';
+  document.getElementById('f-notes').value        = '';
 
   renderFibGroups();
   updateWsjfPreview();
-  $('modal').classList.remove('hidden');
-  setTimeout(() => $('f-name').focus(), 60);
+  document.getElementById('modal').classList.remove('hidden');
+  setTimeout(function() { document.getElementById('f-name').focus(); }, 60);
 }
 
 function openEdit(id) {
-  const task = state.tasks.find(t => t.Task_ID === id);
+  var task = state.tasks.find(function(t) { return t.Task_ID === id; });
   if (!task) return;
 
   state.editingId = id;
@@ -316,36 +292,35 @@ function openEdit(id) {
     Job_Size:         parseInt(task.Job_Size)          || 3,
   };
 
-  $('modal-title').textContent    = 'Edit Task';
-  $('btn-delete').style.display   = 'inline-flex';
-  $('status-field').style.display = '';
+  document.getElementById('modal-title').textContent    = 'Edit Task';
+  document.getElementById('btn-delete').style.display   = 'inline-flex';
+  document.getElementById('status-field').style.display = '';
 
-  $('f-name').value         = task.Task_Name        || '';
-  $('f-category').value     = task.Category         || '';
-  $('f-status').value       = task.Status           || 'Backlog';
-  $('f-predecessors').value = task.Predecessor_IDs  || '';
-  $('f-duration').value     = task.Duration_Days    || '';
-  $('f-notes').value        = task.Notes            || '';
+  document.getElementById('f-name').value         = task.Task_Name        || '';
+  document.getElementById('f-category').value     = task.Category         || '';
+  document.getElementById('f-status').value       = task.Status           || 'Backlog';
+  document.getElementById('f-predecessors').value = task.Predecessor_IDs  || '';
+  document.getElementById('f-duration').value     = task.Duration_Days    || '';
+  document.getElementById('f-notes').value        = task.Notes            || '';
 
   renderFibGroups();
   updateWsjfPreview();
-  $('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.remove('hidden');
 }
 
 function closeModal() {
-  $('modal').classList.add('hidden');
+  document.getElementById('modal').classList.add('hidden');
   state.editingId = null;
 }
 
 function renderFibGroups() {
-  ['Value_Score', 'Time_Criticality', 'RR_OE_Score', 'Job_Size'].forEach(field => {
-    const el = $('fib-' + field);
+  ['Value_Score', 'Time_Criticality', 'RR_OE_Score', 'Job_Size'].forEach(function(field) {
+    var el = document.getElementById('fib-' + field);
     if (!el) return;
-    el.innerHTML = FIBS.map(n => `
-      <button type="button"
-              class="fib-btn${state.scores[field] === n ? ' active' : ''}"
-              onclick="selectFib('${field}',${n})">${n}</button>
-    `).join('');
+    el.innerHTML = FIBS.map(function(n) {
+      return '<button type="button" class="fib-btn' + (state.scores[field] === n ? ' active' : '') +
+        '" onclick="selectFib(\'' + field + '\',' + n + ')">' + n + '</button>';
+    }).join('');
   });
 }
 
@@ -356,29 +331,30 @@ function selectFib(field, value) {
 }
 
 function updateWsjfPreview() {
-  const { Value_Score: v, Time_Criticality: t, RR_OE_Score: r, Job_Size: j } = state.scores;
-  $('wsjf-preview').textContent = j > 0 ? ((v + t + r) / j).toFixed(2) : '—';
+  var v = state.scores.Value_Score, t = state.scores.Time_Criticality,
+      r = state.scores.RR_OE_Score,  j = state.scores.Job_Size;
+  document.getElementById('wsjf-preview').textContent = j > 0 ? ((v + t + r) / j).toFixed(2) : '—';
 }
 
 function saveTask() {
-  const name = $('f-name').value.trim();
-  if (!name) { $('f-name').focus(); toast('Task name is required', 'error'); return; }
+  var name = document.getElementById('f-name').value.trim();
+  if (!name) { document.getElementById('f-name').focus(); toast('Task name is required', 'error'); return; }
 
-  const payload = {
+  var payload = {
     Task_Name:        name,
-    Category:         $('f-category').value,
-    Status:           $('f-status').value || 'Backlog',
+    Category:         document.getElementById('f-category').value,
+    Status:           document.getElementById('f-status').value || 'Backlog',
     Value_Score:      state.scores.Value_Score,
     Time_Criticality: state.scores.Time_Criticality,
     RR_OE_Score:      state.scores.RR_OE_Score,
     Job_Size:         state.scores.Job_Size,
-    Predecessor_IDs:  $('f-predecessors').value.trim(),
-    Duration_Days:    parseInt($('f-duration').value) || '',
-    Notes:            $('f-notes').value.trim(),
+    Predecessor_IDs:  document.getElementById('f-predecessors').value.trim(),
+    Duration_Days:    parseInt(document.getElementById('f-duration').value) || '',
+    Notes:            document.getElementById('f-notes').value.trim(),
   };
 
-  const v = payload.Value_Score, tc = payload.Time_Criticality,
-        r = payload.RR_OE_Score,  j  = payload.Job_Size;
+  var v = payload.Value_Score, tc = payload.Time_Criticality,
+      r = payload.RR_OE_Score,  j  = payload.Job_Size;
   payload.Base_WSJF     = Math.round((v + tc + r) / j * 100) / 100;
   payload.Adjusted_WSJF = payload.Base_WSJF;
 
@@ -403,10 +379,6 @@ function deleteTask() {
   toast('Task deleted');
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// QUICK ACTIONS
-// ────────────────────────────────────────────────────────────────────────────────
-
 function markDone(id) {
   DB.update(id, { Status: 'Completed' });
   loadAndRender();
@@ -419,32 +391,28 @@ function reopen(id) {
   toast('Task reopened');
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// ANALYZE
-// ────────────────────────────────────────────────────────────────────────────────
-
 function analyze() {
-  const tasks = DB.load();
+  var tasks = DB.load();
   if (!tasks.length) { toast('No tasks to analyze', 'error'); return; }
 
-  const btn = $('btn-analyze');
+  var btn = document.getElementById('btn-analyze');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Analyzing…';
 
-  setTimeout(() => {
+  setTimeout(function() {
     try {
-      const { ranked, cp, cpDur } = runAnalysis(tasks);
-      DB.saveAll(ranked);
+      var result = runAnalysis(tasks);
+      DB.saveAll(result.ranked);
 
-      state.tasks       = ranked;
-      state.cp          = cp;
-      state.cpDur       = cpDur;
+      state.tasks       = result.ranked;
+      state.cp          = result.cp;
+      state.cpDur       = result.cpDur;
       state.lastAnalyzed = new Date().toLocaleTimeString();
 
       render();
 
-      const activeCount = ranked.filter(t => !['Completed','Deferred'].includes(t.Status)).length;
-      toast(`Analysis complete — ${activeCount} tasks ranked`, 'info');
+      var activeCount = result.ranked.filter(function(t) { return t.Status !== 'Completed' && t.Status !== 'Deferred'; }).length;
+      toast('Analysis complete — ' + activeCount + ' tasks ranked', 'info');
     } catch (e) {
       toast('Analysis failed: ' + e.message, 'error');
     } finally {
@@ -454,98 +422,92 @@ function analyze() {
   }, 30);
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// REPORT
-// ────────────────────────────────────────────────────────────────────────────────
-
 function showReport() {
-  const tasks = DB.load();
+  var tasks = DB.load();
   if (!tasks.length) { toast('No tasks yet', 'error'); return; }
 
-  let ranked = tasks, cp = state.cp, cpDur = state.cpDur;
+  var ranked = tasks, cp = state.cp, cpDur = state.cpDur;
   if (!state.lastAnalyzed) {
-    const res = runAnalysis(tasks);
+    var res = runAnalysis(tasks);
     ranked = res.ranked; cp = res.cp; cpDur = res.cpDur;
   }
 
-  const active    = ranked.filter(t => !['Completed','Deferred'].includes(t.Status));
-  const completed = tasks.filter(t => t.Status === 'Completed');
-  const d         = today();
+  var active    = ranked.filter(function(t) { return t.Status !== 'Completed' && t.Status !== 'Deferred'; });
+  var completed = tasks.filter(function(t) { return t.Status === 'Completed'; });
+  var d = today();
 
-  const lines = [
-    `# Priority Report — ${d}`, '',
-    `Active: ${active.length} | Completed: ${completed.length}`,
-    cp.length ? `Critical path: ${cp.join(' → ')} (${cpDur} days)` : '',
+  var lines = [
+    '# Priority Report — ' + d, '',
+    'Active: ' + active.length + ' | Completed: ' + completed.length,
+    cp.length ? 'Critical path: ' + cp.join(' → ') + ' (' + cpDur + ' days)' : '',
     '', '| # | ID | Adj.WSJF | Status | Task |', '|---|---|---|---|---|',
   ];
 
-  active.forEach((t, i) => {
-    const cp_mark = t._on_critical_path ? ' ★' : '';
-    lines.push(`| ${i+1} | ${t.Task_ID} | ${t.Adjusted_WSJF ?? '?'} | ${t.Status} | ${t.Task_Name}${cp_mark} |`);
+  active.forEach(function(t, i) {
+    var cp_mark = t._on_critical_path ? ' ★' : '';
+    lines.push('| ' + (i+1) + ' | ' + t.Task_ID + ' | ' + (t.Adjusted_WSJF || '?') + ' | ' + t.Status + ' | ' + t.Task_Name + cp_mark + ' |');
   });
 
   if (completed.length) {
     lines.push('', '## Completed', '');
-    completed.forEach(t => lines.push(`- ~~${t.Task_Name}~~ \`${t.Task_ID}\``));
+    completed.forEach(function(t) { lines.push('- ~~' + t.Task_Name + '~~ `' + t.Task_ID + '`'); });
   }
 
-  lines.push('', '---', `*Generated ${d} · Priority Engine*`);
+  lines.push('', '---', '*Generated ' + d + ' · Priority Engine*');
 
-  $('report-content').textContent = lines.filter(l => l !== '').join('\n') || '(empty)';
-  $('report-modal').classList.remove('hidden');
+  document.getElementById('report-content').textContent = lines.filter(function(l) { return l !== ''; }).join('\n') || '(empty)';
+  document.getElementById('report-modal').classList.remove('hidden');
 }
 
 function copyReport() {
-  navigator.clipboard.writeText($('report-content').textContent).then(
-    ()  => toast('Copied to clipboard'),
-    ()  => toast('Copy failed — try selecting and copying manually', 'error'),
+  navigator.clipboard.writeText(document.getElementById('report-content').textContent).then(
+    function() { toast('Copied to clipboard'); },
+    function() { toast('Copy failed — try selecting and copying manually', 'error'); }
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// IMPORT / EXPORT
-// ────────────────────────────────────────────────────────────────────────────────
-
 function exportData() {
-  const tasks = DB.load();
+  var tasks = DB.load();
   if (!tasks.length) { toast('Nothing to export', 'error'); return; }
-  const blob = new Blob([JSON.stringify(tasks, null, 2)], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'), {
-    href: url, download: `priority-${today()}.json`,
-  });
+  var blob = new Blob([JSON.stringify(tasks, null, 2)], { type: 'application/json' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url;
+  a.download = 'priority-' + today() + '.json';
   a.click();
   URL.revokeObjectURL(url);
-  toast(`Exported ${tasks.length} tasks`);
+  toast('Exported ' + tasks.length + ' tasks');
 }
 
 function importData() {
-  const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json' });
-  input.onchange = async e => {
-    const file = e.target.files[0];
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = function(e) {
+    var file = e.target.files[0];
     if (!file) return;
-    try {
-      const tasks = JSON.parse(await file.text());
-      if (!Array.isArray(tasks)) throw new Error('File must contain a JSON array');
-      if (!confirm(`Import ${tasks.length} tasks? This will replace your current data.`)) return;
-      DB.save(tasks);
-      loadAndRender();
-      toast(`Imported ${tasks.length} tasks`);
-    } catch (err) {
-      toast('Import failed: ' + err.message, 'error');
-    }
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        var tasks = JSON.parse(ev.target.result);
+        if (!Array.isArray(tasks)) throw new Error('File must contain a JSON array');
+        if (!confirm('Import ' + tasks.length + ' tasks? This will replace your current data.')) return;
+        DB.save(tasks);
+        loadAndRender();
+        toast('Imported ' + tasks.length + ' tasks');
+      } catch (err) {
+        toast('Import failed: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
   };
   input.click();
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// SEED DATA
-// ────────────────────────────────────────────────────────────────────────────────
-
 function seedData() {
   if (DB.load().length && !confirm('Load demo data? This will replace your current tasks.')) return;
 
-  const demos = [
+  var demos = [
     { Task_Name:'Set up OAuth credentials for data pipeline', Category:'Professional',
       Value_Score:2, Time_Criticality:5, RR_OE_Score:13, Job_Size:1,
       Duration_Days:1, Status:'Backlog', Predecessor_IDs:'',
@@ -581,28 +543,24 @@ function seedData() {
   ];
 
   DB.save([]);
-  demos.forEach((d, i) => {
-    const id = `T-${String(i + 1).padStart(3, '0')}`;
-    const { Value_Score: v, Time_Criticality: tc, RR_OE_Score: r, Job_Size: j } = d;
-    DB.save([...DB.load(), {
-      ...d,
+  demos.forEach(function(d, i) {
+    var id = 'T-' + String(i + 1).padStart(3, '0');
+    var v = d.Value_Score, tc = d.Time_Criticality, r = d.RR_OE_Score, j = d.Job_Size;
+    var all = DB.load();
+    all.push(Object.assign({}, d, {
       Task_ID:       id,
       Base_WSJF:     Math.round((v + tc + r) / j * 100) / 100,
       Adjusted_WSJF: Math.round((v + tc + r) / j * 100) / 100,
       Last_Updated:  today(),
-    }]);
+    }));
+    DB.save(all);
   });
 
   loadAndRender();
   toast('Loaded 8 demo tasks — click ⚡ Analyze to rank them', 'info');
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// UTILITIES
-// ────────────────────────────────────────────────────────────────────────────────
-
-function $  (id) { return document.getElementById(id); }
-function esc(s)  { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function esc(s)  { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function today() { return new Date().toISOString().slice(0, 10); }
 
 function statusClass(s) {
@@ -614,51 +572,48 @@ function wsjfClass(v) {
   return v >= 10 ? 'wsjf-high' : v >= 5 ? 'wsjf-medium' : 'wsjf-low';
 }
 
-function toast(msg, type = 'success') {
-  const el = document.createElement('div');
-  el.className  = `toast toast-${type}`;
+function toast(msg, type) {
+  if (!type) type = 'success';
+  var el = document.createElement('div');
+  el.className  = 'toast toast-' + type;
   el.textContent = msg;
-  $('toasts').appendChild(el);
-  setTimeout(() => el.remove(), 3800);
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(function() { el.remove(); }, 3800);
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// INIT & EVENT WIRING
-// ────────────────────────────────────────────────────────────────────────────────
-
 function init() {
-  $('btn-new').onclick     = openNew;
-  $('btn-analyze').onclick = analyze;
-  $('btn-report').onclick  = showReport;
-  $('btn-export').onclick  = exportData;
-  $('btn-import').onclick  = importData;
+  document.getElementById('btn-new').onclick     = openNew;
+  document.getElementById('btn-analyze').onclick = analyze;
+  document.getElementById('btn-report').onclick  = showReport;
+  document.getElementById('btn-export').onclick  = exportData;
+  document.getElementById('btn-import').onclick  = importData;
 
-  $('btn-new-empty').onclick = openNew;
-  $('btn-seed').onclick      = seedData;
+  document.getElementById('btn-new-empty').onclick = openNew;
+  document.getElementById('btn-seed').onclick      = seedData;
 
-  $('modal-close').onclick = closeModal;
-  $('btn-cancel').onclick  = closeModal;
-  $('btn-save').onclick    = saveTask;
-  $('btn-delete').onclick  = deleteTask;
-  $('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
+  document.getElementById('modal-close').onclick = closeModal;
+  document.getElementById('btn-cancel').onclick  = closeModal;
+  document.getElementById('btn-save').onclick    = saveTask;
+  document.getElementById('btn-delete').onclick  = deleteTask;
+  document.getElementById('modal').addEventListener('click', function(e) { if (e.target === document.getElementById('modal')) closeModal(); });
 
-  $('report-close').onclick    = () => $('report-modal').classList.add('hidden');
-  $('btn-copy-report').onclick = copyReport;
-  $('report-modal').addEventListener('click', e => {
-    if (e.target === $('report-modal')) $('report-modal').classList.add('hidden');
+  document.getElementById('report-close').onclick    = function() { document.getElementById('report-modal').classList.add('hidden'); };
+  document.getElementById('btn-copy-report').onclick = copyReport;
+  document.getElementById('report-modal').addEventListener('click', function(e) {
+    if (e.target === document.getElementById('report-modal')) document.getElementById('report-modal').classList.add('hidden');
   });
 
-  document.addEventListener('keydown', e => {
+  document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-      $('modal').classList.add('hidden');
-      $('report-modal').classList.add('hidden');
+      document.getElementById('modal').classList.add('hidden');
+      document.getElementById('report-modal').classList.add('hidden');
     }
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      if (!$('modal').classList.contains('hidden')) saveTask();
+      if (!document.getElementById('modal').classList.contains('hidden')) saveTask();
     }
   });
 
-  const style = document.createElement('style');
+  var style = document.createElement('style');
   style.textContent = '.domino-tag{font-size:11px;color:#7c3aed;font-weight:600;padding:1px 6px;background:#ede9fe;border-radius:10px}';
   document.head.appendChild(style);
 
