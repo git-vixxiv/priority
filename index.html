@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Priority</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-brand">
+      <div class="brand-mark">P</div>
+      <span class="brand-name">Priority</span>
+    </div>
+    <div class="header-stats" id="header-stats"></div>
+    <div class="header-actions">
+      <button class="btn btn-ghost" id="btn-export" title="Export tasks as JSON">⬇ Export</button>
+      <button class="btn btn-ghost" id="btn-import" title="Import tasks from JSON">⬆ Import</button>
+      <button class="btn btn-ghost" id="btn-report">📄 Report</button>
+      <button class="btn btn-secondary" id="btn-analyze">⚡ Analyze</button>
+      <button class="btn btn-primary" id="btn-new">+ New Task</button>
+    </div>
+  </header>
+
+  <div id="analysis-banner" class="analysis-banner hidden"></div>
+
+  <main class="main">
+
+    <div id="empty-state" class="empty-state hidden">
+      <div class="empty-icon">📋</div>
+      <h2>No tasks yet</h2>
+      <p>Add your first priority, or load demo data to see how the ranking works.</p>
+      <div class="empty-actions">
+        <button class="btn btn-primary btn-lg" id="btn-new-empty">+ Add First Task</button>
+        <button class="btn btn-secondary btn-lg" id="btn-seed">Load Demo Data</button>
+      </div>
+      <div class="how-it-works">
+        <h3>How it works</h3>
+        <div class="how-grid">
+          <div class="how-item">
+            <div class="how-icon">⚖️</div>
+            <strong>WSJF Scoring</strong>
+            <p>Every task gets four scores: Value, Time Criticality, Risk/Opportunity, and Job Size. The formula is (Value + Time + Risk) ÷ Size.</p>
+          </div>
+          <div class="how-item">
+            <div class="how-icon">🌊</div>
+            <strong>Domino Effect</strong>
+            <p>A small task that unblocks three big ones ranks higher than any of them alone. Adjusted WSJF captures this upstream value.</p>
+          </div>
+          <div class="how-item">
+            <div class="how-icon">🗺️</div>
+            <strong>Critical Path</strong>
+            <p>The longest chain of dependent tasks. Any delay on this path delays everything. These get a ★ marker.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="task-list" class="task-list hidden"></div>
+
+  </main>
+
+  <!-- Add / Edit modal -->
+  <div id="modal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">New Task</h2>
+        <button class="close-btn" id="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="task-form" autocomplete="off" novalidate>
+
+          <div class="field">
+            <label class="label" for="f-name">Task Name <span class="req">*</span></label>
+            <input class="input" type="text" id="f-name" required placeholder="What needs to get done?">
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="label" for="f-category">Category</label>
+              <select class="input" id="f-category">
+                <option value="">— none —</option>
+                <option>Professional</option>
+                <option>Personal</option>
+                <option>Health</option>
+                <option>Financial</option>
+                <option>Relationship</option>
+                <option>Creative</option>
+                <option>Administrative</option>
+              </select>
+            </div>
+            <div class="field" id="status-field">
+              <label class="label" for="f-status">Status</label>
+              <select class="input" id="f-status">
+                <option>Backlog</option>
+                <option>In Progress</option>
+                <option>Blocked</option>
+                <option>Completed</option>
+                <option>Deferred</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="scores-section">
+            <div class="scores-header">
+              <h3 class="scores-title">WSJF Scores</h3>
+              <div class="wsjf-live">
+                <span class="wsjf-live-label">Base WSJF</span>
+                <span class="wsjf-live-value" id="wsjf-preview">—</span>
+              </div>
+            </div>
+            <div class="score-grid">
+              <div class="score-group">
+                <div class="score-label">Value Score</div>
+                <div class="score-hint">How much value does this deliver?</div>
+                <div class="fib-group" id="fib-Value_Score"></div>
+              </div>
+              <div class="score-group">
+                <div class="score-label">Time Criticality</div>
+                <div class="score-hint">How fast does value decay if delayed?</div>
+                <div class="fib-group" id="fib-Time_Criticality"></div>
+              </div>
+              <div class="score-group">
+                <div class="score-label">Risk Reduction / Opportunity</div>
+                <div class="score-hint">Does this unblock other work or reduce risk?</div>
+                <div class="fib-group" id="fib-RR_OE_Score"></div>
+              </div>
+              <div class="score-group">
+                <div class="score-label">Job Size</div>
+                <div class="score-hint">How much effort? (larger = lower WSJF)</div>
+                <div class="fib-group" id="fib-Job_Size"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="label" for="f-predecessors">Blocked by (Task IDs)</label>
+              <input class="input" type="text" id="f-predecessors" placeholder="T-001, T-002">
+              <div class="field-hint">Tasks that must complete before this one</div>
+            </div>
+            <div class="field">
+              <label class="label" for="f-duration">Duration (days)</label>
+              <input class="input" type="number" id="f-duration" min="1" max="365" placeholder="1">
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="label" for="f-notes">Notes</label>
+            <textarea class="input textarea" id="f-notes" rows="3"
+              placeholder="Context, constraints, risks, or links..."></textarea>
+          </div>
+
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger-outline" id="btn-delete" style="display:none">Delete Task</button>
+        <div class="modal-footer-right">
+          <button class="btn btn-ghost" id="btn-cancel">Cancel</button>
+          <button class="btn btn-primary" id="btn-save">Save Task</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report modal -->
+  <div id="report-modal" class="overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h2>Priority Report</h2>
+        <button class="close-btn" id="report-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="report-toolbar">
+          <button class="btn btn-secondary btn-sm" id="btn-copy-report">Copy Markdown</button>
+        </div>
+        <pre id="report-content" class="report-pre"></pre>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts" aria-live="polite"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
