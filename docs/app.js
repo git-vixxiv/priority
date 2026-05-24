@@ -82,6 +82,14 @@ function critPath(graph, idx) {
   return { path: path, dur: totalDur };
 }
 
+// Returns IDs of nodes involved in dependency cycles (nodes absent from topo order).
+function detectCycles(graph) {
+  var order = topoSort(graph);
+  var inOrder = {};
+  order.forEach(function(n) { inOrder[n] = true; });
+  return Object.keys(graph).filter(function(n) { return !inOrder[n]; });
+}
+
 function runAnalysis(allTasks) {
   var tasks = allTasks.map(function(t) { return Object.assign({}, t); });
   var graph = buildGraph(tasks);
@@ -106,14 +114,19 @@ function runAnalysis(allTasks) {
   var cp = critPath(graph, idx);
   cp.path.forEach(function(id) { if (idx[id]) idx[id]._on_critical_path = true; });
 
-  var DONE = ['Completed', 'Deferred'];
+  var DONE      = ['Completed', 'Deferred'];
+  var OBSERVING = ['Awaiting'];   // known, tracked, but no action possible yet
+
   var active = tasks
-    .filter(function(t) { return DONE.indexOf(t.Status) === -1; })
+    .filter(function(t) { return DONE.indexOf(t.Status) === -1 && OBSERVING.indexOf(t.Status) === -1; })
     .sort(function(a, b) { return (b.Adjusted_WSJF || 0) - (a.Adjusted_WSJF || 0); });
   active.forEach(function(t, i) { t.Priority_Rank = i + 1; });
 
-  var done = tasks.filter(function(t) { return DONE.indexOf(t.Status) !== -1; });
-  return { ranked: active.concat(done), cp: cp.path, cpDur: cp.dur };
+  var observing = tasks.filter(function(t) { return OBSERVING.indexOf(t.Status) !== -1; });
+  var done      = tasks.filter(function(t) { return DONE.indexOf(t.Status) !== -1; });
+
+  var cycleIds = detectCycles(graph);
+  return { ranked: active.concat(observing).concat(done), cp: cp.path, cpDur: cp.dur, cycleIds: cycleIds };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -281,11 +294,13 @@ function render() {
 }
 
 function renderHeader() {
-  var active    = state.tasks.filter(function(t) { return ['Completed','Deferred'].indexOf(t.Status) === -1; }).length;
+  var active    = state.tasks.filter(function(t) { return ['Completed','Deferred','Awaiting'].indexOf(t.Status) === -1; }).length;
+  var awaiting  = state.tasks.filter(function(t) { return t.Status === 'Awaiting'; }).length;
   var completed = state.tasks.filter(function(t) { return t.Status === 'Completed'; }).length;
   var el = document.getElementById('header-stats');
   el.innerHTML =
     '<div class="stat"><span class="stat-value">' + active + '</span> active</div>' +
+    (awaiting ? '<div class="stat"><span class="stat-value">' + awaiting + '</span> awaiting</div>' : '') +
     '<div class="stat"><span class="stat-value">' + completed + '</span> completed</div>' +
     (state.lastAnalyzed ? '<div class="stat">analyzed <span class="stat-value">' + state.lastAnalyzed + '</span></div>' : '');
 }
@@ -317,9 +332,10 @@ function renderTaskList() {
   var rank = 0;
 
   list.innerHTML = state.tasks.map(function(task) {
-    var isDone    = DONE.indexOf(task.Status) !== -1;
-    var isAwaiting = task.Status === 'Awaiting';
-    if (!isDone) rank++;
+    var isDone       = DONE.indexOf(task.Status) !== -1;
+    var isAwaiting   = task.Status === 'Awaiting';
+    var isActionable = !isDone && !isAwaiting;
+    if (isActionable) rank++;
 
     var adj  = parseFloat(task.Adjusted_WSJF || task.Base_WSJF || 0);
     var base = parseFloat(task.Base_WSJF || 0);
@@ -342,17 +358,18 @@ function renderTaskList() {
       ? '<div class="awaiting-desc">&#9201; Waiting for: ' + esc(task.Awaiting_Description) + '</div>'
       : '';
 
-    var rankHtml = isDone
-      ? '<span class="task-rank no-rank">&mdash;</span>'
-      : '<span class="task-rank">' + rank + '</span>';
+    var rankHtml = isActionable
+      ? '<span class="task-rank">' + rank + '</span>'
+      : '<span class="task-rank no-rank">&mdash;</span>';
 
+    // Action buttons use data attributes — no inline JS, avoids injection via imported Task_IDs.
     var actionHtml;
     if (isDone) {
-      actionHtml = '<button class="icon-btn" title="Reopen" onclick="reopen(\'' + esc(task.Task_ID) + '\')">&#8629;</button>';
+      actionHtml = '<button class="icon-btn" title="Reopen" data-action="reopen" data-id="' + esc(task.Task_ID) + '">&#8629;</button>';
     } else if (isAwaiting) {
-      actionHtml = '<button class="icon-btn icon-btn-await" title="Mark resolved" onclick="markDone(\'' + esc(task.Task_ID) + '\')">&#10003;</button>';
+      actionHtml = '<button class="icon-btn icon-btn-await" title="Mark resolved" data-action="done" data-id="' + esc(task.Task_ID) + '">&#10003;</button>';
     } else {
-      actionHtml = '<button class="icon-btn" title="Mark complete" onclick="markDone(\'' + esc(task.Task_ID) + '\')">&#10003;</button>';
+      actionHtml = '<button class="icon-btn" title="Mark complete" data-action="done" data-id="' + esc(task.Task_ID) + '">&#10003;</button>';
     }
 
     var catBadge    = task.Category ? '<span class="badge cat-badge">' + esc(task.Category) + '</span>' : '';
@@ -363,7 +380,8 @@ function renderTaskList() {
     if (isDone)     cardClass += ' ' + task.Status.toLowerCase().replace(' ', '-');
     if (isAwaiting) cardClass += ' awaiting';
 
-    return '<div class="' + cardClass + '" data-id="' + esc(task.Task_ID) + '" onclick="openEdit(\'' + esc(task.Task_ID) + '\')">' +
+    // Card uses data-id only — click handled via event delegation in init().
+    return '<div class="' + cardClass + '" data-id="' + esc(task.Task_ID) + '">' +
       rankHtml +
       '<div class="task-main">' +
         '<div class="task-name-row">' +
@@ -379,7 +397,7 @@ function renderTaskList() {
         '</div>' +
         noteHtml +
       '</div>' +
-      '<div class="task-actions" onclick="event.stopPropagation()">' + actionHtml + '</div>' +
+      '<div class="task-actions">' + actionHtml + '</div>' +
     '</div>';
   }).join('');
 }
@@ -411,7 +429,6 @@ function showWizardStep(n) {
   if (n === 5) renderChoiceList('effort-choices',  EFFORT_CHOICES,  'Job_Size');
   if (n === 6) renderWsjfResult();
 
-  // Scroll wizard body to top
   var body = document.querySelector('.wizard-body');
   if (body) body.scrollTop = 0;
 }
@@ -496,6 +513,17 @@ function onStatusChange() {
 // MODAL OPEN / CLOSE
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Infer task type from stored tag, category name, or task name keywords.
+function inferType(task) {
+  if (task._type && TYPE_FRAMING[task._type]) return task._type;
+  var combined = ((task.Category || '') + ' ' + (task.Task_Name || '')).toLowerCase();
+  if (/legal|law|court|compliance|litigation|regulat|tax|counsel|attorney|appeal|ruling/.test(combined)) return 'legal';
+  if (/health|medical|doctor|fitness|wellness|therapy|mental|physical|bloodwork/.test(combined)) return 'health';
+  if (/admin|administrat|renewal|insurance|license|permit|filing|logistics/.test(combined)) return 'admin';
+  if (/personal|relation|family|friend|growth|self/.test(combined)) return 'personal';
+  return 'opportunity';
+}
+
 function openNew() {
   state.editingId   = null;
   state.wizardType  = null;
@@ -523,21 +551,16 @@ function openEdit(id) {
   if (!task) return;
 
   state.editingId   = id;
+  // Use null when score is missing/invalid so the wizard shows no pre-selection
+  // rather than silently substituting a fabricated value.
   state.wizardScores = {
-    Value_Score:      parseInt(task.Value_Score)      || 5,
-    Time_Criticality: parseInt(task.Time_Criticality) || 3,
-    RR_OE_Score:      parseInt(task.RR_OE_Score)      || 3,
-    Job_Size:         parseInt(task.Job_Size)          || 3,
+    Value_Score:      parseInt(task.Value_Score)      || null,
+    Time_Criticality: parseInt(task.Time_Criticality) || null,
+    RR_OE_Score:      parseInt(task.RR_OE_Score)      || null,
+    Job_Size:         parseInt(task.Job_Size)          || null,
   };
 
-  // Infer type from category or existing type tag
-  var cat = (task.Category || '').toLowerCase();
-  state.wizardType = task._type ||
-    (cat.indexOf('legal') !== -1 ? 'legal'
-     : cat.indexOf('health') !== -1 ? 'health'
-     : (cat.indexOf('admin') !== -1) ? 'admin'
-     : (cat.indexOf('personal') !== -1 || cat.indexOf('relation') !== -1) ? 'personal'
-     : 'opportunity');
+  state.wizardType = inferType(task);
 
   document.getElementById('btn-delete').style.display      = 'inline-flex';
   document.getElementById('f-name').value                  = task.Task_Name || '';
@@ -596,16 +619,23 @@ function saveTask() {
     _type:                state.wizardType || 'opportunity',
   };
 
-  if (state.editingId) {
+  var wasEditing = !!state.editingId;
+  if (wasEditing) {
     DB.update(state.editingId, payload);
-    toast('Task updated');
   } else {
     DB.add(payload);
-    toast('Task added — click ⚡ Analyze to re-rank');
   }
 
+  // Re-run full analysis immediately so Adjusted_WSJF reflects the dependency graph.
+  var result = runAnalysis(DB.load());
+  DB.saveAll(result.ranked);
+  state.tasks  = result.ranked;
+  state.cp     = result.cp;
+  state.cpDur  = result.cpDur;
+
   closeModal();
-  loadAndRender();
+  render();
+  toast(wasEditing ? 'Task updated' : 'Task added');
 }
 
 function deleteTask() {
@@ -647,15 +677,20 @@ function analyze() {
 
   setTimeout(function() {
     try {
-      var result   = runAnalysis(tasks);
+      var result = runAnalysis(tasks);
       DB.saveAll(result.ranked);
       state.tasks        = result.ranked;
       state.cp           = result.cp;
       state.cpDur        = result.cpDur;
       state.lastAnalyzed = new Date().toLocaleTimeString();
       render();
-      var activeCount = result.ranked.filter(function(t) { return ['Completed','Deferred'].indexOf(t.Status) === -1; }).length;
-      toast('Analysis complete — ' + activeCount + ' tasks ranked', 'info');
+
+      if (result.cycleIds && result.cycleIds.length) {
+        toast('Circular dependency on ' + result.cycleIds.join(', ') + ' — check Predecessor IDs', 'error');
+      } else {
+        var activeCount = result.ranked.filter(function(t) { return ['Completed','Deferred','Awaiting'].indexOf(t.Status) === -1; }).length;
+        toast('Analysis complete — ' + activeCount + ' tasks ranked', 'info');
+      }
     } catch(e) {
       toast('Analysis failed: ' + e.message, 'error');
     } finally {
@@ -680,13 +715,14 @@ function showReport() {
   }
 
   var DONE      = ['Completed', 'Deferred'];
-  var active    = ranked.filter(function(t) { return DONE.indexOf(t.Status) === -1; });
+  var active    = ranked.filter(function(t) { return DONE.indexOf(t.Status) === -1 && t.Status !== 'Awaiting'; });
+  var awaiting  = ranked.filter(function(t) { return t.Status === 'Awaiting'; });
   var completed = tasks.filter(function(t)  { return t.Status === 'Completed'; });
   var d         = today();
 
   var lines = [
     '# Priority Report — ' + d, '',
-    'Active: ' + active.length + ' | Completed: ' + completed.length,
+    'Active: ' + active.length + ' | Awaiting: ' + awaiting.length + ' | Completed: ' + completed.length,
     cp.length ? 'Critical path: ' + cp.join(' → ') + ' (' + cpDur + ' days)' : '',
     '', '| # | ID | Score | Status | Task |', '|---|---|---|---|---|',
   ];
@@ -695,6 +731,14 @@ function showReport() {
     var mark = t._on_critical_path ? ' ★' : '';
     lines.push('| ' + (i+1) + ' | ' + t.Task_ID + ' | ' + (t.Adjusted_WSJF||'?') + ' | ' + t.Status + ' | ' + t.Task_Name + mark + ' |');
   });
+
+  if (awaiting.length) {
+    lines.push('', '## Awaiting External Outcome', '');
+    awaiting.forEach(function(t) {
+      var desc = t.Awaiting_Description ? ' (' + t.Awaiting_Description + ')' : '';
+      lines.push('- **' + t.Task_Name + '** `' + t.Task_ID + '`' + desc);
+    });
+  }
 
   if (completed.length) {
     lines.push('', '## Completed', '');
@@ -802,19 +846,18 @@ function seedData() {
       Notes:'Outcome determines next steps in T-010. Monitor docket.' },
   ];
 
-  DB.save([]);
-  demos.forEach(function(d, i) {
+  // Build and save in one pass — no O(n²) load/save loop.
+  var all = demos.map(function(d, i) {
     var id = 'T-' + String(i + 1).padStart(3, '0');
     var v = d.Value_Score, tc = d.Time_Criticality, r = d.RR_OE_Score, j = d.Job_Size;
-    var all = DB.load();
-    all.push(Object.assign({}, d, {
+    return Object.assign({}, d, {
       Task_ID:       id,
       Base_WSJF:     Math.round((v + tc + r) / j * 100) / 100,
       Adjusted_WSJF: Math.round((v + tc + r) / j * 100) / 100,
       Last_Updated:  today(),
-    }));
-    DB.save(all);
+    });
   });
+  DB.save(all);
 
   loadAndRender();
   toast('Loaded demo tasks — click ⚡ Analyze to rank them', 'info');
@@ -862,14 +905,32 @@ function init() {
   document.getElementById('modal-close').onclick   = closeModal;
   document.getElementById('btn-cancel').onclick    = closeModal;
   document.getElementById('btn-delete').onclick    = deleteTask;
+
   document.getElementById('modal').addEventListener('click', function(e) {
     if (e.target === document.getElementById('modal')) closeModal();
   });
+
   document.getElementById('report-close').onclick    = function() { document.getElementById('report-modal').classList.add('hidden'); };
   document.getElementById('btn-copy-report').onclick = copyReport;
   document.getElementById('report-modal').addEventListener('click', function(e) {
     if (e.target === document.getElementById('report-modal')) document.getElementById('report-modal').classList.add('hidden');
   });
+
+  // Event delegation for task list — handles card clicks and action buttons
+  // without inline JS, keeping Task_IDs from imported data out of executable context.
+  document.getElementById('task-list').addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-action]');
+    if (btn) {
+      e.stopPropagation();
+      var id = btn.dataset.id;
+      if (btn.dataset.action === 'done')   markDone(id);
+      if (btn.dataset.action === 'reopen') reopen(id);
+      return;
+    }
+    var card = e.target.closest('.task-card[data-id]');
+    if (card) openEdit(card.dataset.id);
+  });
+
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
       document.getElementById('modal').classList.add('hidden');
@@ -879,6 +940,7 @@ function init() {
       if (!document.getElementById('modal').classList.contains('hidden')) wizardNext();
     }
   });
+
   loadAndRender();
 }
 
