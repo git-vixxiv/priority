@@ -5,6 +5,7 @@ from typing import Any
 
 from .wsjf import calculate_base_wsjf, calculate_adjusted_wsjf, needs_decomposition
 from .dag import build_graph, detect_cycles, find_critical_path, successor_count
+from .stakes import parse_stakes_adjustment, resolve_dependency_hints
 
 
 BOTTLENECK_INFLATE_THRESHOLD = 50   # bottleneck_score above this overrides WSJF rank
@@ -37,6 +38,19 @@ def run_full_analysis(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     if not tasks:
         return []
+
+    # Step 0: resolve Dependency_Hints → auto-augment Predecessor_IDs
+    hint_resolutions = resolve_dependency_hints(tasks)
+    for task in tasks:
+        tid = task.get('Task_ID')
+        if tid not in hint_resolutions:
+            continue
+        matched = hint_resolutions[tid]
+        existing = [p.strip() for p in (task.get('Predecessor_IDs') or '').split(',') if p.strip()]
+        added = [m for m in matched if m not in existing]
+        if added:
+            task['Predecessor_IDs'] = ', '.join(existing + added)
+            task['_auto_linked'] = added
 
     cycles = detect_cycles(build_graph(tasks))
     if cycles:
@@ -71,6 +85,16 @@ def run_full_analysis(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         base = task.get("Base_WSJF", 0.0)
         task["Adjusted_WSJF"] = calculate_adjusted_wsjf(tid, base, graph, task_index)
+
+    # Pass 2b: stakes adjustment (financial magnitude + legal severity)
+    for task in tasks:
+        stakes = (task.get('Stakes_Description') or '').strip()
+        if not stakes:
+            continue
+        bonus = parse_stakes_adjustment(stakes, task.get('Category', ''))
+        if bonus > 0:
+            task['Adjusted_WSJF'] = round(task.get('Adjusted_WSJF', 0.0) + bonus, 2)
+            task['_stakes_bonus'] = bonus
 
     # Pass 3: bottleneck inflation
     succ_counts = successor_count(graph)
@@ -142,5 +166,17 @@ def explain_rank(task: dict[str, Any], rank: int) -> str:
     bs = task.get("Bottleneck_Score")
     if bs and int(bs) > BOTTLENECK_INFLATE_THRESHOLD:
         lines.append(f"  ↑ Bottleneck score {bs} > {BOTTLENECK_INFLATE_THRESHOLD} — priority inflated")
+
+    stakes_bonus = task.get("_stakes_bonus")
+    if stakes_bonus:
+        lines.append(f"  $ Stakes adjustment: +{stakes_bonus} (from: {task.get('Stakes_Description', '')[:60]})")
+
+    auto_linked = task.get("_auto_linked")
+    if auto_linked:
+        lines.append(f"  🔗 Auto-linked dependency hint → {', '.join(auto_linked)}")
+
+    ext = (task.get("External_Blockers") or "").strip()
+    if ext:
+        lines.append(f"  👤 External blocker: {ext[:80]}")
 
     return "\n".join(lines)

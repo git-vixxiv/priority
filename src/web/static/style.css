@@ -250,6 +250,32 @@ body { background: var(--bg); min-height: 100vh; }
 .flag-decomp { background: #fce7f3; color: #9d174d; }
 .flag-bn     { background: #fef3c7; color: #92400e; }
 
+.stakes-chip {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 500;
+  cursor: default;
+}
+
+.task-ext-blocker {
+  color: #92400e;
+  font-style: italic;
+}
+
+.field-tag {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--primary-light);
+  color: var(--primary);
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
 .task-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
 
 .icon-btn {

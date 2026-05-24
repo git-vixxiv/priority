@@ -88,6 +88,9 @@ def cmd_add(args) -> None:
             "Duration_Days": args.duration or "",
             "Category": args.category or "",
             "Notes": args.notes or "",
+            "Stakes_Description": args.stakes or "",
+            "External_Blockers": args.person_dep or "",
+            "Dependency_Hints": args.dep_hint or "",
         }
         if needs_decomposition(js):
             print(f"Note: Job_Size={js} >= 13 — decomposition recommended before scheduling.")
@@ -99,10 +102,11 @@ def cmd_add(args) -> None:
 
     else:
         # No scores — print evaluation-agent prompt for Claude to handle
+        stakes_hint = f"\nStakes: {args.stakes}" if args.stakes else ""
         print(f"""
 PRIORITY SYSTEM — EVALUATE & ADD TASK
 =======================================
-Description: {description}
+Description: {description}{stakes_hint}
 
 Invoke evaluation-agent with this description, then call:
   python -m src.cli add "{description}" \\
@@ -170,6 +174,15 @@ def cmd_show(args) -> None:
     print(f"  Predecessors:{task.get('Predecessor_IDs', 'none')}")
     print(f"  Successors:  {task.get('Successor_IDs', 'none')}")
     print(f"  Critical path: {'yes ★' if task.get('_on_critical_path') else 'no'}")
+    if task.get("Stakes_Description"):
+        from .algorithms.stakes import parse_stakes_adjustment
+        bonus = parse_stakes_adjustment(task["Stakes_Description"], task.get("Category", ""))
+        bonus_str = f" → +{bonus} to Adjusted_WSJF" if bonus else " (no score adjustment)"
+        print(f"  Stakes:      {task.get('Stakes_Description')}{bonus_str}")
+    if task.get("External_Blockers"):
+        print(f"  Ext.Blocker: {task.get('External_Blockers')}")
+    if task.get("Dependency_Hints"):
+        print(f"  Dep.Hints:   {task.get('Dependency_Hints')}")
     if task.get("Notes"):
         print(f"  Notes:       {task.get('Notes')}")
     if task.get("Pros"):
@@ -204,7 +217,7 @@ def cmd_analyze(args) -> None:
         print(explain_rank(task, task["Priority_Rank"]))
         print()
 
-    # Persist updated scores
+    # Persist updated scores and auto-linked dependencies
     updated = 0
     for task in ranked:
         tid = task.get("Task_ID")
@@ -217,6 +230,8 @@ def cmd_analyze(args) -> None:
                 _backend().update_task_field(tid, "Base_WSJF", task["Base_WSJF"])
             if task.get("Priority_Rank") is not None:
                 _backend().update_task_field(tid, "Priority_Rank", task["Priority_Rank"])
+            if task.get("_auto_linked"):
+                _backend().update_task_field(tid, "Predecessor_IDs", task["Predecessor_IDs"])
             updated += 1
         except Exception as e:
             print(f"  Warning: could not update {tid}: {e}")
@@ -532,6 +547,9 @@ def main():
     p.add_argument("--duration",      type=int, help="Duration in days")
     p.add_argument("--category",      help="Category label")
     p.add_argument("--notes",         help="Free-form notes")
+    p.add_argument("--stakes",        help="Financial amount or legal severity description (e.g. '$1.2M judgment', 'felony arrest warrant')")
+    p.add_argument("--person-dep",    dest="person_dep", help="External person/institution blocking this task")
+    p.add_argument("--dep-hint",      dest="dep_hint", help="Natural-language description of dependencies (auto-mapped to Task IDs during analysis)")
     p.set_defaults(func=cmd_add)
 
     # list

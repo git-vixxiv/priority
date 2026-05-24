@@ -40,18 +40,18 @@
         <div class="how-grid">
           <div class="how-item">
             <div class="how-icon">⚖️</div>
-            <strong>WSJF Scoring</strong>
-            <p>Every task gets four scores: Value, Time Criticality, Risk/Opportunity, and Job Size. The formula is (Value + Time + Risk) ÷ Size.</p>
+            <strong>Smart Ranking</strong>
+            <p>Answer a few plain-English questions about each task. Priority calculates which one to do first based on stakes, urgency, and effort.</p>
           </div>
           <div class="how-item">
             <div class="how-icon">🌊</div>
             <strong>Domino Effect</strong>
-            <p>A small task that unblocks three big ones ranks higher than any of them alone. Adjusted WSJF captures this upstream value.</p>
+            <p>A small task that unblocks three big ones ranks higher than any of them alone. Downstream impact is factored in automatically.</p>
           </div>
           <div class="how-item">
             <div class="how-icon">🗺️</div>
             <strong>Critical Path</strong>
-            <p>The longest chain of dependent tasks. Any delay on this path delays everything. These get a ★ marker.</p>
+            <p>The longest chain of dependent tasks — any delay here delays everything downstream. These get a ★ marker after you run Analyze.</p>
           </div>
         </div>
       </div>
@@ -61,20 +61,87 @@
 
   </main>
 
-  <!-- Add / Edit modal -->
-  <div id="modal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <div class="modal">
-      <div class="modal-header">
-        <h2 id="modal-title">New Task</h2>
-        <button class="close-btn" id="modal-close" aria-label="Close">✕</button>
-      </div>
-      <div class="modal-body">
-        <form id="task-form" autocomplete="off" novalidate>
+  <!-- ── Wizard modal ── -->
+  <div id="modal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="wizard-step-label">
+    <div class="modal modal-wizard">
 
-          <div class="field">
-            <label class="label" for="f-name">Task Name <span class="req">*</span></label>
-            <input class="input" type="text" id="f-name" required placeholder="What needs to get done?">
+      <div class="wizard-header">
+        <div class="wizard-header-top">
+          <span class="wizard-step-label" id="wizard-step-label">Step 1 of 6</span>
+          <button class="close-btn" id="modal-close" aria-label="Close">✕</button>
+        </div>
+        <div class="wizard-progress-track">
+          <div class="wizard-progress-fill" id="wizard-progress-fill"></div>
+        </div>
+      </div>
+
+      <div class="wizard-body">
+
+        <!-- Step 1: Name + Type -->
+        <div class="wstep" id="ws-1">
+          <div class="step-q">What needs to get done?</div>
+          <input class="input wizard-name-input" type="text" id="f-name"
+                 placeholder="Describe the task in a few words...">
+          <div class="step-subq">What kind of task is this?</div>
+          <div class="type-grid">
+            <button class="type-card" data-type="opportunity" onclick="selectType('opportunity')">
+              <span class="type-icon">🎯</span>
+              <span class="type-label">Project / Opportunity</span>
+              <span class="type-desc">I want to create value or achieve something</span>
+            </button>
+            <button class="type-card" data-type="legal" onclick="selectType('legal')">
+              <span class="type-icon">⚖️</span>
+              <span class="type-label">Legal / Compliance</span>
+              <span class="type-desc">There are consequences if I don't act</span>
+            </button>
+            <button class="type-card" data-type="health" onclick="selectType('health')">
+              <span class="type-icon">🏥</span>
+              <span class="type-label">Health & Wellbeing</span>
+              <span class="type-desc">Personal health or self-care matter</span>
+            </button>
+            <button class="type-card" data-type="admin" onclick="selectType('admin')">
+              <span class="type-icon">📋</span>
+              <span class="type-label">Administrative</span>
+              <span class="type-desc">Renewal, logistics, housekeeping</span>
+            </button>
+            <button class="type-card type-card-wide" data-type="personal" onclick="selectType('personal')">
+              <span class="type-icon">🌱</span>
+              <span class="type-label">Personal / Relationship</span>
+              <span class="type-desc">Goals, relationships, personal growth</span>
+            </button>
           </div>
+        </div>
+
+        <!-- Step 2: Stakes -->
+        <div class="wstep hidden" id="ws-2">
+          <div class="step-q" id="step2-q">How serious is this?</div>
+          <div class="step-hint" id="step2-hint"></div>
+          <div class="choice-list" id="stakes-choices"></div>
+        </div>
+
+        <!-- Step 3: Urgency -->
+        <div class="wstep hidden" id="ws-3">
+          <div class="step-q">How time-sensitive is this?</div>
+          <div class="choice-list" id="urgency-choices"></div>
+        </div>
+
+        <!-- Step 4: Ripple effect -->
+        <div class="wstep hidden" id="ws-4">
+          <div class="step-q">Does completing this unblock or enable other things?</div>
+          <div class="step-hint">Think about what else starts moving once this is done — other tasks, decisions, or people.</div>
+          <div class="choice-list" id="ripple-choices"></div>
+        </div>
+
+        <!-- Step 5: Effort -->
+        <div class="wstep hidden" id="ws-5">
+          <div class="step-q">How much time and effort will this take?</div>
+          <div class="choice-list" id="effort-choices"></div>
+        </div>
+
+        <!-- Step 6: Details -->
+        <div class="wstep hidden" id="ws-6">
+          <div class="step-q">Any additional details? <span class="optional-label">All optional.</span></div>
+          <div class="wsjf-result hidden" id="wsjf-result"></div>
 
           <div class="field-row">
             <div class="field">
@@ -88,50 +155,27 @@
                 <option>Relationship</option>
                 <option>Creative</option>
                 <option>Administrative</option>
+                <option>Legal</option>
               </select>
             </div>
-            <div class="field" id="status-field">
+            <div class="field">
               <label class="label" for="f-status">Status</label>
-              <select class="input" id="f-status">
+              <select class="input" id="f-status" onchange="onStatusChange()">
                 <option>Backlog</option>
                 <option>In Progress</option>
                 <option>Blocked</option>
+                <option>Awaiting</option>
                 <option>Completed</option>
                 <option>Deferred</option>
               </select>
             </div>
           </div>
 
-          <div class="scores-section">
-            <div class="scores-header">
-              <h3 class="scores-title">WSJF Scores</h3>
-              <div class="wsjf-live">
-                <span class="wsjf-live-label">Base WSJF</span>
-                <span class="wsjf-live-value" id="wsjf-preview">—</span>
-              </div>
-            </div>
-            <div class="score-grid">
-              <div class="score-group">
-                <div class="score-label">Value Score</div>
-                <div class="score-hint">How much value does this deliver?</div>
-                <div class="fib-group" id="fib-Value_Score"></div>
-              </div>
-              <div class="score-group">
-                <div class="score-label">Time Criticality</div>
-                <div class="score-hint">How fast does value decay if delayed?</div>
-                <div class="fib-group" id="fib-Time_Criticality"></div>
-              </div>
-              <div class="score-group">
-                <div class="score-label">Risk Reduction / Opportunity</div>
-                <div class="score-hint">Does this unblock other work or reduce risk?</div>
-                <div class="fib-group" id="fib-RR_OE_Score"></div>
-              </div>
-              <div class="score-group">
-                <div class="score-label">Job Size</div>
-                <div class="score-hint">How much effort? (larger = lower WSJF)</div>
-                <div class="fib-group" id="fib-Job_Size"></div>
-              </div>
-            </div>
+          <div class="field" id="awaiting-field" style="display:none">
+            <label class="label" for="f-awaiting">Waiting for what?</label>
+            <input class="input" type="text" id="f-awaiting"
+                   placeholder="e.g. 8th Circuit Court ruling on appeal">
+            <div class="field-hint">Describe the external outcome or event you're waiting on</div>
           </div>
 
           <div class="field-row">
@@ -149,22 +193,25 @@
           <div class="field">
             <label class="label" for="f-notes">Notes</label>
             <textarea class="input textarea" id="f-notes" rows="3"
-              placeholder="Context, constraints, risks, or links..."></textarea>
+              placeholder="Context, deadlines, links, risks..."></textarea>
           </div>
+        </div>
 
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-danger-outline" id="btn-delete" style="display:none">Delete Task</button>
-        <div class="modal-footer-right">
-          <button class="btn btn-ghost" id="btn-cancel">Cancel</button>
-          <button class="btn btn-primary" id="btn-save">Save Task</button>
+      </div><!-- /wizard-body -->
+
+      <div class="wizard-footer">
+        <button class="btn btn-danger-outline" id="btn-delete" style="display:none">Delete</button>
+        <div class="wizard-nav">
+          <button class="btn btn-ghost" id="btn-back" onclick="wizardBack()" style="display:none">← Back</button>
+          <button class="btn btn-ghost" id="btn-cancel" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" id="btn-next" onclick="wizardNext()">Next →</button>
         </div>
       </div>
+
     </div>
   </div>
 
-  <!-- Report modal -->
+  <!-- ── Report modal ── -->
   <div id="report-modal" class="overlay hidden">
     <div class="modal modal-wide">
       <div class="modal-header">
@@ -181,7 +228,6 @@
   </div>
 
   <div id="toasts" aria-live="polite"></div>
-
   <script src="./app.js"></script>
 </body>
 </html>

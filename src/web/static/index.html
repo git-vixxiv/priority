@@ -136,6 +136,27 @@
               placeholder="Context, constraints, risks, or links..."></textarea>
           </div>
 
+          <div class="field">
+            <label class="label" for="f-stakes">Stakes <span class="field-tag">scored</span></label>
+            <textarea class="input textarea" id="f-stakes" rows="2"
+              placeholder="Describe the financial value or legal severity — e.g. '$1.2M judgment at risk', 'felony arrest warrant', 'statute of limitations expires in 30 days on $50K claim'. The system reads this and adjusts priority accordingly."></textarea>
+            <div class="field-hint">Larger financial amounts and higher legal severity automatically raise this task's score.</div>
+          </div>
+
+          <div class="field">
+            <label class="label" for="f-external-blockers">External Blockers <span class="field-tag">person/event</span></label>
+            <input class="input" type="text" id="f-external-blockers"
+              placeholder="Who or what outside the system is blocking this? e.g. 'Waiting on Judge Smith to schedule hearing'">
+            <div class="field-hint">People, institutions, or events you cannot directly control.</div>
+          </div>
+
+          <div class="field">
+            <label class="label" for="f-dep-hints">Dependency Hints <span class="field-tag">auto-linked</span></label>
+            <textarea class="input textarea" id="f-dep-hints" rows="2"
+              placeholder="Describe what this depends on in plain language — e.g. 'depends on the warrant being quashed first'. The system will match this to existing tasks during analysis."></textarea>
+            <div class="field-hint">You don't need to know the Task ID. Write the dependency conversationally and Analyze will make the connection.</div>
+          </div>
+
         </form>
       </div>
 

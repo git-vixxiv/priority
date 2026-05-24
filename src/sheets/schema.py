@@ -156,6 +156,42 @@ COLUMNS: list[dict] = [
         "example": "Check with legal before starting.",
     },
     {
+        "name": "Stakes_Description",
+        "type": "string",
+        "required": False,
+        "description": (
+            "Free text describing financial value or legal severity. "
+            "The scoring engine reads this to apply magnitude-based adjustments. "
+            "Examples: '$1.2M in potential damages', 'felony arrest warrant — jailable offense', "
+            "'statute of limitations expires in 30 days on $50K claim'."
+        ),
+        "example": "$450,000 judgment plus attorney fees",
+    },
+    {
+        "name": "External_Blockers",
+        "type": "string",
+        "required": False,
+        "description": (
+            "Free text describing people, institutions, or external events blocking this task — "
+            "things outside the system that you cannot directly control. "
+            "Examples: 'Waiting on Judge Smith to schedule hearing', "
+            "'Opposing counsel must respond by June 1', 'Need co-signer availability'."
+        ),
+        "example": "Waiting on court to schedule hearing date",
+    },
+    {
+        "name": "Dependency_Hints",
+        "type": "string",
+        "required": False,
+        "description": (
+            "Natural-language description of what this task depends on. "
+            "The system will attempt to auto-map this to existing Task IDs during analysis. "
+            "Use when you don't know the Task ID of a dependency yet, or it hasn't been added. "
+            "Example: 'depends on the warrant being quashed first'."
+        ),
+        "example": "depends on quashing the warrant and reinstating bond",
+    },
+    {
         "name": "Last_Updated",
         "type": "date",
         "required": False,
