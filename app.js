@@ -363,7 +363,7 @@ function renderTaskList() {
     if (isDone)     cardClass += ' ' + task.Status.toLowerCase().replace(' ', '-');
     if (isAwaiting) cardClass += ' awaiting';
 
-    return '<div class="' + cardClass + '" data-id="' + esc(task.Task_ID) + '" onclick="openEdit(\'' + esc(task.Task_ID) + '\')">" +
+    return '<div class="' + cardClass + '" data-id="' + esc(task.Task_ID) + '" onclick="openEdit(\'' + esc(task.Task_ID) + '\')">' +
       rankHtml +
       '<div class="task-main">' +
         '<div class="task-name-row">' +
