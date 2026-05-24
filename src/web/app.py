@@ -33,6 +33,9 @@ class TaskIn(BaseModel):
     Predecessor_IDs: str = ""
     Notes: str = ""
     Status: str = "Backlog"
+    Stakes_Description: str = ""
+    External_Blockers: str = ""
+    Dependency_Hints: str = ""
 
 
 class TaskPatch(BaseModel):
@@ -46,6 +49,9 @@ class TaskPatch(BaseModel):
     Predecessor_IDs: Optional[str] = None
     Notes: Optional[str] = None
     Status: Optional[str] = None
+    Stakes_Description: Optional[str] = None
+    External_Blockers: Optional[str] = None
+    Dependency_Hints: Optional[str] = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

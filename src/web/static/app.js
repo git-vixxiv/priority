@@ -105,6 +105,14 @@ function renderTaskList() {
       ? `<div class="task-note">${esc(task.Notes.slice(0, 90))}${task.Notes.length > 90 ? '…' : ''}</div>`
       : '';
 
+    const extBlocker = task.External_Blockers
+      ? `<div class="task-note task-ext-blocker">👤 ${esc(task.External_Blockers.slice(0, 80))}${task.External_Blockers.length > 80 ? '…' : ''}</div>`
+      : '';
+
+    const stakesChip = task.Stakes_Description
+      ? `<span class="stakes-chip" title="${esc(task.Stakes_Description)}">$ stakes</span>`
+      : '';
+
     return `
       <div class="task-card ${isDone ? task.Status.toLowerCase() : ''}"
            data-id="${task.Task_ID}" onclick="openEdit('${task.Task_ID}')">
@@ -122,8 +130,10 @@ function renderTaskList() {
               V=${task.Value_Score || '?'} T=${task.Time_Criticality || '?'} R=${task.RR_OE_Score || '?'} / J=${task.Job_Size || '?'}
             </span>
             ${task.Predecessor_IDs ? `<span style="font-size:11px;color:#9ca3af">blocks on: ${esc(task.Predecessor_IDs)}</span>` : ''}
+            ${stakesChip}
           </div>
           ${noteSnippet}
+          ${extBlocker}
         </div>
         <div class="task-actions" onclick="event.stopPropagation()">
           ${task.Status !== 'Completed'
@@ -144,12 +154,15 @@ function openNew() {
   $('status-field').style.display = 'none';
 
   // Clear form
-  $('f-name').value         = '';
-  $('f-category').value     = '';
-  $('f-status').value       = 'Backlog';
-  $('f-predecessors').value = '';
-  $('f-duration').value     = '';
-  $('f-notes').value        = '';
+  $('f-name').value              = '';
+  $('f-category').value          = '';
+  $('f-status').value            = 'Backlog';
+  $('f-predecessors').value      = '';
+  $('f-duration').value          = '';
+  $('f-notes').value             = '';
+  $('f-stakes').value            = '';
+  $('f-external-blockers').value = '';
+  $('f-dep-hints').value         = '';
 
   renderFibGroups();
   updateWsjfPreview();
@@ -173,12 +186,15 @@ function openEdit(taskId) {
   $('btn-delete').style.display = 'inline-flex';
   $('status-field').style.display = '';
 
-  $('f-name').value         = task.Task_Name || '';
-  $('f-category').value     = task.Category  || '';
-  $('f-status').value       = task.Status    || 'Backlog';
-  $('f-predecessors').value = task.Predecessor_IDs || '';
-  $('f-duration').value     = task.Duration_Days   || '';
-  $('f-notes').value        = task.Notes     || '';
+  $('f-name').value              = task.Task_Name       || '';
+  $('f-category').value          = task.Category        || '';
+  $('f-status').value            = task.Status          || 'Backlog';
+  $('f-predecessors').value      = task.Predecessor_IDs || '';
+  $('f-duration').value          = task.Duration_Days   || '';
+  $('f-notes').value             = task.Notes           || '';
+  $('f-stakes').value            = task.Stakes_Description  || '';
+  $('f-external-blockers').value = task.External_Blockers   || '';
+  $('f-dep-hints').value         = task.Dependency_Hints    || '';
 
   renderFibGroups();
   updateWsjfPreview();
@@ -218,16 +234,19 @@ async function saveTask() {
   if (!name) { $('f-name').focus(); toast('Task name is required', 'error'); return; }
 
   const payload = {
-    Task_Name:         name,
-    Category:          $('f-category').value,
-    Status:            $('f-status').value,
-    Value_Score:       state.scores.Value_Score,
-    Time_Criticality:  state.scores.Time_Criticality,
-    RR_OE_Score:       state.scores.RR_OE_Score,
-    Job_Size:          state.scores.Job_Size,
-    Predecessor_IDs:   $('f-predecessors').value.trim(),
-    Duration_Days:     parseInt($('f-duration').value) || null,
-    Notes:             $('f-notes').value.trim(),
+    Task_Name:          name,
+    Category:           $('f-category').value,
+    Status:             $('f-status').value,
+    Value_Score:        state.scores.Value_Score,
+    Time_Criticality:   state.scores.Time_Criticality,
+    RR_OE_Score:        state.scores.RR_OE_Score,
+    Job_Size:           state.scores.Job_Size,
+    Predecessor_IDs:    $('f-predecessors').value.trim(),
+    Duration_Days:      parseInt($('f-duration').value) || null,
+    Notes:              $('f-notes').value.trim(),
+    Stakes_Description: $('f-stakes').value.trim(),
+    External_Blockers:  $('f-external-blockers').value.trim(),
+    Dependency_Hints:   $('f-dep-hints').value.trim(),
   };
 
   setSaving(true);
