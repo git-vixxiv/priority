@@ -247,10 +247,21 @@ var URGENCY_CHOICES = [
 ];
 
 var RIPPLE_CHOICES = [
-  { dot: 'green',  label: 'Standalone',          desc: 'Nothing else really depends on this completing',                        fib: 1  },
-  { dot: 'yellow', label: 'Minor ripple',        desc: 'Might make 1–2 other things easier',                                   fib: 3  },
-  { dot: 'orange', label: 'Unlocks several',     desc: 'Completing this enables multiple other tasks or decisions',             fib: 8  },
-  { dot: 'red',    label: 'Major enabler',       desc: 'Removes a critical blocker — many things are waiting on this outcome',  fib: 13 },
+  { dot: 'green',  label: 'Standalone',
+    desc: 'Completing this doesn\'t move anything else — it stands on its own',
+    fib: 1  },
+  { dot: 'yellow', label: 'Minor ripple',
+    desc: 'Makes 1–2 other things a bit easier, but nothing is waiting on it',
+    fib: 3  },
+  { dot: 'orange', label: 'Clear enabler',
+    desc: 'Directly unblocks multiple tasks, frees recurring time, or opens a decision others are waiting on',
+    fib: 8  },
+  { dot: 'red',    label: 'Multiplier',
+    desc: '5+ things waiting on this — or it generates money, resources, or capacity that fund significant other work',
+    fib: 13 },
+  { dot: 'black',  label: 'Force multiplier',
+    desc: 'Doing this one thing materially advances a large portion of your remaining priorities, or produces the resources that make everything else possible',
+    fib: 20 },
 ];
 
 var EFFORT_CHOICES = [
