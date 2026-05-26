@@ -23,10 +23,10 @@
  * Security is enforced by Firestore security rules, not the key itself.
  */
 var FIREBASE_CONFIG = {
-  apiKey:            'YOUR_API_KEY',
-  authDomain:        'YOUR_PROJECT_ID.firebaseapp.com',
-  projectId:         'YOUR_PROJECT_ID',
-  storageBucket:     'YOUR_PROJECT_ID.appspot.com',
-  messagingSenderId: 'YOUR_SENDER_ID',
-  appId:             'YOUR_APP_ID',
+  apiKey:            'AIzaSyDC6yvvGJO4_VNv8P9dkjz0nhM4t7of2KA',
+  authDomain:        'rank-624.firebaseapp.com',
+  projectId:         'rank-624',
+  storageBucket:     'rank-624.firebasestorage.app',
+  messagingSenderId: '665358122591',
+  appId:             '1:665358122591:web:6e2d526fbb27ffcc32e5ea',
 };
