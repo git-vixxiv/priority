@@ -1,5 +1,17 @@
 'use strict';
 
+// ─── FIREBASE / AUTH ──────────────────────────────────────────────────────────
+var FIREBASE_READY = (typeof firebase !== 'undefined') &&
+                    (typeof FIREBASE_CONFIG !== 'undefined') &&
+                    (typeof FIREBASE_CONFIG.apiKey === 'string') &&
+                    (FIREBASE_CONFIG.apiKey.indexOf('YOUR_') === -1);
+
+var _auth = null;
+var _db   = null;
+var _currentUser = null;
+var _localMode = !FIREBASE_READY; // true = use localStorage
+var _dragId = null;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ALGORITHMS  (WSJF · DAG · CPM — all run in the browser)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,51 +142,151 @@ function runAnalysis(allTasks) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STORAGE  (localStorage)
+// STORAGE  (Firestore or localStorage)
 // ─────────────────────────────────────────────────────────────────────────────
 
 var DB = {
   KEY: 'priority_v1',
+  _local: [],
 
-  load: function() {
-    try { return JSON.parse(localStorage.getItem(this.KEY) || '[]'); }
-    catch(e) { return []; }
+  // Async: fetch from Firestore or localStorage, populate _local, call callback(tasks)
+  fetch: function(callback) {
+    if (!_localMode && _db && _currentUser) {
+      _db.collection('users').doc(_currentUser.uid).get()
+        .then(function(snap) {
+          var tasks = (snap.exists && snap.data().tasks) ? snap.data().tasks : [];
+          DB._local = tasks;
+          callback(tasks);
+        })
+        .catch(function(e) {
+          toast('Could not load tasks: ' + e.message, 'error');
+          callback([]);
+        });
+    } else {
+      try { DB._local = JSON.parse(localStorage.getItem(DB.KEY) || '[]'); }
+      catch(e) { DB._local = []; }
+      callback(DB._local.slice());
+    }
   },
 
+  // Sync: returns current in-memory cache (call fetch first)
+  load: function() { return DB._local.slice(); },
+
+  // Persist tasks (async to Firestore, sync to localStorage)
   save: function(tasks) {
-    localStorage.setItem(this.KEY, JSON.stringify(tasks));
+    DB._local = tasks;
+    if (!_localMode && _db && _currentUser) {
+      _db.collection('users').doc(_currentUser.uid).set({ tasks: tasks })
+        .catch(function(e) { toast('Sync error: ' + e.message, 'error'); });
+    } else {
+      try { localStorage.setItem(DB.KEY, JSON.stringify(tasks)); } catch(e) {}
+    }
   },
 
-  nextId: function(tasks) {
-    var nums = tasks.map(function(t) { return parseInt((t.Task_ID || '').replace('T-', '')) || 0; });
+  nextId: function() {
+    var nums = DB._local.map(function(t) { return parseInt((t.Task_ID || '').replace('T-', '')) || 0; });
     return 'T-' + String(Math.max.apply(null, [0].concat(nums)) + 1).padStart(3, '0');
   },
 
   add: function(task) {
-    var tasks = this.load();
-    task.Task_ID      = this.nextId(tasks);
+    task.Task_ID      = DB.nextId();
     task.Last_Updated = today();
-    tasks.push(task);
-    this.save(tasks);
+    DB._local.push(task);
+    DB.save(DB._local);
     return task;
   },
 
   update: function(id, patch) {
-    var tasks = this.load();
     var i = -1;
-    tasks.forEach(function(t, idx) { if (t.Task_ID === id) i = idx; });
+    DB._local.forEach(function(t, idx) { if (t.Task_ID === id) i = idx; });
     if (i === -1) return null;
-    tasks[i] = Object.assign({}, tasks[i], patch, { Last_Updated: today() });
-    this.save(tasks);
-    return tasks[i];
+    DB._local[i] = Object.assign({}, DB._local[i], patch, { Last_Updated: today() });
+    DB.save(DB._local);
+    return DB._local[i];
   },
 
   remove: function(id) {
-    this.save(this.load().filter(function(t) { return t.Task_ID !== id; }));
+    DB._local = DB._local.filter(function(t) { return t.Task_ID !== id; });
+    DB.save(DB._local);
   },
 
-  saveAll: function(tasks) { this.save(tasks); },
+  saveAll: function(tasks) { DB._local = tasks; DB.save(tasks); },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIREBASE / AUTH FUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function initFirebase() {
+  if (!FIREBASE_READY) { showApp(); return; }
+  firebase.initializeApp(FIREBASE_CONFIG);
+  _auth = firebase.auth();
+  _db   = firebase.firestore();
+  _auth.onAuthStateChanged(function(user) {
+    _currentUser = user;
+    if (user) {
+      _localMode = false;
+      renderUserInfo(user);
+      document.getElementById('auth-overlay').classList.add('hidden');
+      // Migrate localStorage tasks to Firestore if Firestore is empty
+      DB.fetch(function(tasks) {
+        if (!tasks.length) {
+          var local = [];
+          try { local = JSON.parse(localStorage.getItem('priority_v1') || '[]'); } catch(e) {}
+          if (local.length) {
+            DB.save(local);
+            tasks = local;
+            toast('Migrated ' + local.length + ' local task(s) to your account', 'info');
+          }
+        }
+        state.tasks = tasks;
+        render();
+      });
+    } else {
+      renderUserInfo(null);
+      document.getElementById('auth-overlay').classList.remove('hidden');
+    }
+  });
+}
+
+function showApp() {
+  // Called when running in local-only mode (no Firebase or user clicked "continue without account")
+  _localMode = true;
+  document.getElementById('auth-overlay').classList.add('hidden');
+  DB.fetch(function(tasks) { state.tasks = tasks; render(); });
+}
+
+function signInWithGoogle() {
+  if (!_auth) return;
+  var provider = new firebase.auth.GoogleAuthProvider();
+  _auth.signInWithPopup(provider).catch(function(err) {
+    toast('Sign in failed: ' + err.message, 'error');
+  });
+}
+
+function signOutUser() {
+  if (!_auth) return;
+  _auth.signOut().then(function() {
+    _currentUser = null;
+    _localMode = true;
+    state.tasks = [];
+    render();
+  });
+}
+
+function renderUserInfo(user) {
+  var el = document.getElementById('user-info');
+  if (!el) return;
+  if (!user) { el.innerHTML = ''; return; }
+  var name = esc(user.displayName || user.email || '');
+  var avatarHtml = user.photoURL
+    ? '<img src="' + esc(user.photoURL) + '" class="user-avatar" alt="">'
+    : '<div class="user-avatar user-avatar-initials">' + esc((user.displayName || user.email || '?').charAt(0).toUpperCase()) + '</div>';
+  el.innerHTML =
+    avatarHtml +
+    '<span class="user-name">' + name + '</span>' +
+    '<button class="btn btn-ghost btn-sm" data-action="signout">Sign out</button>';
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WIZARD DATA
@@ -294,8 +406,10 @@ var state = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function loadAndRender() {
-  state.tasks = DB.load();
-  render();
+  DB.fetch(function(tasks) {
+    state.tasks = tasks;
+    render();
+  });
 }
 
 function render() {
@@ -326,6 +440,26 @@ function renderBanner() {
     ' <span style="color:#6366f1;font-size:12px">&mdash; any delay here delays everything downstream</span>';
 }
 
+function computeBlockedState(tasks) {
+  var idx = {};
+  tasks.forEach(function(t) { idx[t.Task_ID] = t; });
+  tasks.forEach(function(t) {
+    t._auto_blocked = false;
+    t._blocking_names = [];
+    if (!t.Predecessor_IDs) return;
+    var preds = t.Predecessor_IDs.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var blocking = preds.filter(function(pid) {
+      if (pid === t.Task_ID) return false; // self-reference — ignore
+      var pred = idx[pid];
+      return pred && pred.Status !== 'Completed'; // exists + not done
+    });
+    t._auto_blocked    = blocking.length > 0;
+    t._blocking_names  = blocking.map(function(pid) {
+      return (idx[pid] && idx[pid].Task_Name) || pid;
+    });
+  });
+}
+
 function renderTaskList() {
   var list  = document.getElementById('task-list');
   var empty = document.getElementById('empty-state');
@@ -339,6 +473,8 @@ function renderTaskList() {
   empty.classList.add('hidden');
   list.classList.remove('hidden');
 
+  computeBlockedState(state.tasks);
+
   var DONE = ['Completed', 'Deferred'];
   var rank = 0;
 
@@ -346,6 +482,7 @@ function renderTaskList() {
     var isDone       = DONE.indexOf(task.Status) !== -1;
     var isAwaiting   = task.Status === 'Awaiting';
     var isActionable = !isDone && !isAwaiting;
+    var isAutoBlocked = !!task._auto_blocked;
     if (isActionable) rank++;
 
     var adj  = parseFloat(task.Adjusted_WSJF || task.Base_WSJF || 0);
@@ -369,9 +506,13 @@ function renderTaskList() {
       ? '<div class="awaiting-desc">&#9201; Waiting for: ' + esc(task.Awaiting_Description) + '</div>'
       : '';
 
+    var draggableAttr = isActionable ? ' draggable="true"' : '';
+
     var rankHtml = isActionable
-      ? '<span class="task-rank">' + rank + '</span>'
+      ? '<div class="task-rank-col"><span class="drag-handle" title="Drag to reorder">⋮⋮</span><span class="task-rank">' + rank + '</span></div>'
       : '<span class="task-rank no-rank">&mdash;</span>';
+
+    var blockedTag = isAutoBlocked ? '<span class="flag-blocked">Blocked</span>' : '';
 
     // Action buttons use data attributes — no inline JS, avoids injection via imported Task_IDs.
     var actionHtml;
@@ -388,14 +529,16 @@ function renderTaskList() {
     var predHtml    = task.Predecessor_IDs ? '<span class="task-dep">after: ' + esc(task.Predecessor_IDs) + '</span>' : '';
 
     var cardClass = 'task-card';
-    if (isDone)     cardClass += ' ' + task.Status.toLowerCase().replace(' ', '-');
-    if (isAwaiting) cardClass += ' awaiting';
+    if (isDone)       cardClass += ' ' + task.Status.toLowerCase().replace(' ', '-');
+    if (isAwaiting)   cardClass += ' awaiting';
+    if (isAutoBlocked) cardClass += ' auto-blocked';
 
     // Card uses data-id only — click handled via event delegation in init().
-    return '<div class="' + cardClass + '" data-id="' + esc(task.Task_ID) + '">' +
+    return '<div class="' + cardClass + '" data-id="' + esc(task.Task_ID) + '"' + draggableAttr + '>' +
       rankHtml +
       '<div class="task-main">' +
         '<div class="task-name-row">' +
+          blockedTag +
           '<span class="task-name' + (isDone ? ' strike' : '') + '" title="' + esc(task.Task_Name) + '">' + esc(task.Task_Name) + '</span>' +
           catBadge + statusBadge + flags +
         '</div>' +
@@ -412,6 +555,144 @@ function renderTaskList() {
     '</div>';
   }).join('');
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAG AND DROP
+// ─────────────────────────────────────────────────────────────────────────────
+
+function initDragAndDrop() {
+  var list = document.getElementById('task-list');
+  if (!list) return;
+
+  // Only start drag when mousedown is on the drag handle
+  list.addEventListener('mousedown', function(e) {
+    var card = e.target.closest('.task-card[draggable="true"]');
+    if (!card) return;
+    if (!e.target.closest('.drag-handle')) {
+      card.setAttribute('draggable', 'false');
+      function restore() {
+        card.setAttribute('draggable', 'true');
+        document.removeEventListener('mouseup', restore);
+      }
+      document.addEventListener('mouseup', restore);
+    }
+  });
+
+  list.addEventListener('dragstart', function(e) {
+    var card = e.target.closest('.task-card[draggable="true"]');
+    if (!card) return;
+    _dragId = card.dataset.id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', _dragId);
+    setTimeout(function() { if (card) card.classList.add('dragging'); }, 0);
+  });
+
+  list.addEventListener('dragend', function() {
+    document.querySelectorAll('.task-card.dragging').forEach(function(c) { c.classList.remove('dragging'); });
+    clearDropIndicators();
+    _dragId = null;
+  });
+
+  list.addEventListener('dragover', function(e) {
+    if (!_dragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    clearDropIndicators();
+    var card = e.target.closest('.task-card');
+    if (!card) return;
+    var rect = card.getBoundingClientRect();
+    var before = e.clientY < rect.top + rect.height / 2;
+    var ind = document.createElement('div');
+    ind.className = 'drop-indicator';
+    list.insertBefore(ind, before ? card : card.nextSibling);
+  });
+
+  list.addEventListener('dragleave', function(e) {
+    if (!e.relatedTarget || !list.contains(e.relatedTarget)) clearDropIndicators();
+  });
+
+  list.addEventListener('drop', function(e) {
+    e.preventDefault();
+    clearDropIndicators();
+    var id = _dragId || e.dataTransfer.getData('text/plain');
+    if (!id) return;
+    var card = e.target.closest('.task-card');
+    if (!card || card.dataset.id === id) return;
+    var rect = card.getBoundingClientRect();
+    var before = e.clientY < rect.top + rect.height / 2;
+    applyReorder(id, card.dataset.id, before);
+  });
+}
+
+function clearDropIndicators() {
+  var inds = document.querySelectorAll('.drop-indicator');
+  inds.forEach(function(el) { el.parentNode && el.parentNode.removeChild(el); });
+}
+
+function applyReorder(dragId, targetId, before) {
+  var INACTIVE = ['Completed', 'Deferred', 'Awaiting'];
+  var active = state.tasks.filter(function(t) { return INACTIVE.indexOf(t.Status) === -1; });
+  var rest   = state.tasks.filter(function(t) { return INACTIVE.indexOf(t.Status) !== -1; });
+
+  var dragIdx = -1, targetIdx = -1;
+  active.forEach(function(t, i) {
+    if (t.Task_ID === dragId)   dragIdx   = i;
+    if (t.Task_ID === targetId) targetIdx = i;
+  });
+  if (dragIdx === -1) return;
+  // If target is in the "rest" (done/awaiting), move dragged to end of active
+  if (targetIdx === -1) { targetIdx = active.length - 1; before = false; }
+
+  var rawInsertIdx = before ? targetIdx : targetIdx + 1;
+  var check = checkReorderConstraint(active, dragIdx, rawInsertIdx);
+  if (!check.ok) {
+    toast(
+      '"' + trunc(check.draggedName, 28) + '" can\'t come before "' +
+      trunc(check.blockerName, 28) + '" — it still depends on it. Mark the blocker complete or remove the dependency to reorder.',
+      'error'
+    );
+    return;
+  }
+
+  var newActive = active.slice();
+  var dragged = newActive.splice(dragIdx, 1)[0];
+  var adjIdx = rawInsertIdx > dragIdx ? rawInsertIdx - 1 : rawInsertIdx;
+  newActive.splice(adjIdx, 0, dragged);
+  newActive.forEach(function(t, i) { t.Priority_Rank = i + 1; });
+
+  state.tasks = newActive.concat(rest);
+  DB.save(state.tasks);
+  render();
+}
+
+function checkReorderConstraint(activeTasks, dragIdx, rawInsertIdx) {
+  var newOrder = activeTasks.slice();
+  var dragged = newOrder.splice(dragIdx, 1)[0];
+  var adjIdx = rawInsertIdx > dragIdx ? rawInsertIdx - 1 : rawInsertIdx;
+  newOrder.splice(adjIdx, 0, dragged);
+
+  var posMap = {};
+  var taskIdx = {};
+  newOrder.forEach(function(t, i) { posMap[t.Task_ID] = i; });
+  activeTasks.forEach(function(t) { taskIdx[t.Task_ID] = t; });
+
+  for (var i = 0; i < newOrder.length; i++) {
+    var task = newOrder[i];
+    if (!task.Predecessor_IDs) continue;
+    var preds = task.Predecessor_IDs.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    for (var j = 0; j < preds.length; j++) {
+      var predId = preds[j];
+      var pred = taskIdx[predId];
+      if (!pred || pred.Status === 'Completed') continue;
+      if (posMap[predId] !== undefined && posMap[predId] > i) {
+        return { ok: false, draggedName: task.Task_Name, blockerName: pred.Task_Name || predId };
+      }
+    }
+  }
+  return { ok: true };
+}
+
+function trunc(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WIZARD
@@ -653,8 +934,9 @@ function deleteTask() {
   if (!state.editingId) return;
   if (!confirm('Delete this task? This cannot be undone.')) return;
   DB.remove(state.editingId);
+  state.tasks = DB.load();
   closeModal();
-  loadAndRender();
+  render();
   toast('Task deleted');
 }
 
@@ -664,13 +946,15 @@ function deleteTask() {
 
 function markDone(id) {
   DB.update(id, { Status: 'Completed' });
-  loadAndRender();
+  state.tasks = DB.load();
+  render();
   toast('Marked complete ✓');
 }
 
 function reopen(id) {
   DB.update(id, { Status: 'Backlog' });
-  loadAndRender();
+  state.tasks = DB.load();
+  render();
   toast('Task reopened');
 }
 
@@ -700,7 +984,7 @@ function analyze() {
         toast('Circular dependency on ' + result.cycleIds.join(', ') + ' — check Predecessor IDs', 'error');
       } else {
         var activeCount = result.ranked.filter(function(t) { return ['Completed','Deferred','Awaiting'].indexOf(t.Status) === -1; }).length;
-        toast('Analysis complete — ' + activeCount + ' tasks ranked', 'info');
+        toast('Analysis complete — ' + activeCount + ' tasks ranked. Drag to adjust order.', 'info');
       }
     } catch(e) {
       toast('Analysis failed: ' + e.message, 'error');
@@ -756,7 +1040,7 @@ function showReport() {
     completed.forEach(function(t) { lines.push('- ~~' + t.Task_Name + '~~ `' + t.Task_ID + '`'); });
   }
 
-  lines.push('', '---', '*Generated ' + d + ' · Priority Engine*');
+  lines.push('', '---', '*Generated ' + d + ' \xb7 Priority Engine*');
   document.getElementById('report-content').textContent = lines.filter(function(l) { return l !== ''; }).join('\n') || '(empty)';
   document.getElementById('report-modal').classList.remove('hidden');
 }
@@ -799,7 +1083,8 @@ function importData() {
         if (!Array.isArray(tasks)) throw new Error('File must contain a JSON array');
         if (!confirm('Import ' + tasks.length + ' tasks? This will replace your current data.')) return;
         DB.save(tasks);
-        loadAndRender();
+        state.tasks = tasks;
+        render();
         toast('Imported ' + tasks.length + ' tasks');
       } catch(err) {
         toast('Import failed: ' + err.message, 'error');
@@ -869,8 +1154,8 @@ function seedData() {
     });
   });
   DB.save(all);
-
-  loadAndRender();
+  state.tasks = all;
+  render();
   toast('Loaded demo tasks — click ⚡ Analyze to rank them', 'info');
 }
 
@@ -952,7 +1237,17 @@ function init() {
     }
   });
 
-  loadAndRender();
+  // Auth overlay buttons
+  document.getElementById('btn-google-signin').onclick = signInWithGoogle;
+  document.getElementById('btn-local-only').onclick    = showApp;
+
+  // User info sign-out listener
+  document.getElementById('user-info').addEventListener('click', function(e) {
+    if (e.target.closest('[data-action="signout"]')) signOutUser();
+  });
+
+  initDragAndDrop();
+  initFirebase();
 }
 
 document.addEventListener('DOMContentLoaded', init);

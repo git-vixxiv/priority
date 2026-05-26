@@ -416,3 +416,82 @@ body { background: var(--bg); min-height: 100vh; }
 @media (max-width: 400px) {
   .header-actions .btn-ghost { display: none; }
 }
+
+/* ── Auth overlay ── */
+.auth-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 500; padding: 16px;
+  backdrop-filter: blur(4px);
+}
+.auth-card {
+  background: var(--surface); border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+  padding: 40px 36px; max-width: 400px; width: 100%;
+  text-align: center;
+}
+.auth-brand { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 20px; }
+.auth-brand-name { font-size: 26px; font-weight: 800; color: var(--text); }
+.auth-desc { color: var(--text-3); font-size: 15px; line-height: 1.6; margin-bottom: 24px; }
+.google-signin-btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  width: 100%; padding: 12px 20px;
+  background: #fff; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); cursor: pointer;
+  font-size: 14px; font-weight: 600; color: var(--text-2);
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  transition: box-shadow .15s, background .15s;
+}
+.google-signin-btn:hover { box-shadow: var(--shadow); background: #fafafa; }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; color: var(--text-3); font-size: 12px; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.auth-note { font-size: 11px; color: var(--text-3); margin-top: 14px; line-height: 1.5; }
+
+/* ── User info (header) ── */
+.user-info { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.user-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  object-fit: cover; border: 2px solid var(--border);
+}
+.user-avatar-initials {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--primary); color: #fff;
+  font-size: 12px; font-weight: 700;
+  border: none;
+}
+.user-name { font-size: 13px; font-weight: 500; color: var(--text-2); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Auto-blocked indicator ── */
+.flag-blocked {
+  display: inline-flex; align-items: center;
+  background: var(--danger); color: #fff;
+  font-size: 10px; font-weight: 700; letter-spacing: .05em;
+  padding: 2px 7px; border-radius: 10px;
+  flex-shrink: 0; text-transform: uppercase;
+}
+.task-card.auto-blocked { border-left: 3px solid var(--danger); }
+
+/* ── Drag & drop ── */
+.task-rank-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.drag-handle {
+  font-size: 11px; line-height: 1; letter-spacing: -1px;
+  color: var(--border); cursor: grab; user-select: none;
+  padding: 2px 3px; border-radius: 3px;
+  opacity: 0; transition: opacity .15s, color .15s;
+}
+.task-card:hover .drag-handle { opacity: 1; }
+.task-card:hover .drag-handle:hover { color: var(--text-3); }
+.task-card[draggable="true"] { cursor: default; }
+.task-card.dragging { opacity: 0.35; box-shadow: none !important; }
+.drop-indicator {
+  height: 2px; background: var(--primary);
+  border-radius: 1px; margin: 0; pointer-events: none;
+  position: relative;
+}
+.drop-indicator::before {
+  content: ''; position: absolute; left: 0; top: -3px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--primary);
+}
