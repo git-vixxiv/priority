@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Priority</title>
+  <title>Rank by vixxiv</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
   <header class="header">
     <div class="header-brand">
-      <div class="brand-mark">P</div>
-      <span class="brand-name">Priority</span>
+      <div class="brand-mark">R</div>
+      <span class="brand-name">Rank</span>
     </div>
     <div class="header-stats" id="header-stats"></div>
     <div id="user-info" class="user-info"></div>
@@ -31,7 +31,7 @@
     <div id="empty-state" class="empty-state hidden">
       <div class="empty-icon">📋</div>
       <h2>No tasks yet</h2>
-      <p>Add your first priority, or load demo data to see how the ranking works.</p>
+      <p>Add your first task, or load demo data to see how the ranking works.</p>
       <div class="empty-actions">
         <button class="btn btn-primary btn-lg" id="btn-new-empty">+ Add First Task</button>
         <button class="btn btn-secondary btn-lg" id="btn-seed">Load Demo Data</button>
@@ -42,7 +42,7 @@
           <div class="how-item">
             <div class="how-icon">⚖️</div>
             <strong>Smart Ranking</strong>
-            <p>Answer a few plain-English questions about each task. Priority calculates which one to do first based on stakes, urgency, and effort.</p>
+            <p>Answer a few plain-English questions about each task. Rank calculates which one to do first based on stakes, urgency, and effort.</p>
           </div>
           <div class="how-item">
             <div class="how-icon">🌊</div>
@@ -216,7 +216,7 @@
   <div id="report-modal" class="overlay hidden">
     <div class="modal modal-wide">
       <div class="modal-header">
-        <h2>Priority Report</h2>
+        <h2>Rank Report</h2>
         <button class="close-btn" id="report-close">✕</button>
       </div>
       <div class="modal-body">
@@ -232,8 +232,8 @@
   <div id="auth-overlay" class="auth-overlay hidden">
     <div class="auth-card">
       <div class="auth-brand">
-        <div class="brand-mark" style="width:52px;height:52px;font-size:26px;border-radius:14px">P</div>
-        <span class="auth-brand-name">Priority</span>
+        <div class="brand-mark" style="width:52px;height:52px;font-size:26px;border-radius:14px">R</div>
+        <span class="auth-brand-name">Rank</span>
       </div>
       <p class="auth-desc">Sign in to save your tasks securely and access them from any device.</p>
       <button class="google-signin-btn" id="btn-google-signin">

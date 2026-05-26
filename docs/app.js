@@ -526,6 +526,7 @@ function renderTaskList() {
 
     var catBadge    = task.Category ? '<span class="badge cat-badge">' + esc(task.Category) + '</span>' : '';
     var statusBadge = '<span class="badge ' + statusClass(task.Status) + '">' + esc(task.Status) + '</span>';
+    var idChip      = '<span class="task-id-chip" title="Task ID — use this when listing this task as a blocker for another">' + esc(task.Task_ID || '') + '</span>';
     var predHtml    = task.Predecessor_IDs ? '<span class="task-dep">after: ' + esc(task.Predecessor_IDs) + '</span>' : '';
 
     var cardClass = 'task-card';
@@ -544,6 +545,7 @@ function renderTaskList() {
         '</div>' +
         awaitingHtml +
         '<div class="task-meta">' +
+          idChip +
           '<span class="wsjf-chip ' + wsjfClass(adj) + '">' + adj.toFixed(2) + '</span>' +
           dominoHtml +
           '<span class="task-score-detail">V=' + (task.Value_Score||'?') + ' T=' + (task.Time_Criticality||'?') + ' R=' + (task.RR_OE_Score||'?') + ' / J=' + (task.Job_Size||'?') + '</span>' +
@@ -695,6 +697,56 @@ function checkReorderConstraint(activeTasks, dragIdx, rawInsertIdx) {
 function trunc(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PROJECT TIMELINE  (CPM-style early-start scheduling)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Returns { Task_ID: { start: Date, end: Date, dur: int } } for active tasks.
+// Each task starts as early as its predecessors allow (assuming unconstrained
+// resources — multiple independent tasks can run in parallel).
+function buildSchedule(activeTasks) {
+  var byId = {};
+  activeTasks.forEach(function(t) { byId[t.Task_ID] = t; });
+
+  var visited = {};
+  var order   = [];
+  function visit(id) {
+    if (visited[id]) return;
+    visited[id] = true;
+    var task = byId[id];
+    if (!task) return;
+    (task.Predecessor_IDs || '').split(',')
+      .map(function(s) { return s.trim(); }).filter(Boolean)
+      .forEach(function(p) { if (byId[p]) visit(p); });
+    order.push(task);
+  }
+  activeTasks.forEach(function(t) { visit(t.Task_ID); });
+
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var schedule = {};
+  order.forEach(function(task) {
+    var dur   = Math.max(1, parseInt(task.Duration_Days) || 1);
+    var start = new Date(today);
+    (task.Predecessor_IDs || '').split(',')
+      .map(function(s) { return s.trim(); }).filter(Boolean)
+      .forEach(function(pid) {
+        var ps = schedule[pid];
+        if (ps && ps.end > start) start = new Date(ps.end);
+      });
+    var end = new Date(start);
+    end.setDate(end.getDate() + dur);
+    schedule[task.Task_ID] = { start: start, end: end, dur: dur };
+  });
+  return schedule;
+}
+
+function fmtDate(d) {
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[d.getMonth()] + ' ' + d.getDate();
+}
+
+function dayNum(d, ref) { return Math.round((d - ref) / 86400000) + 1; }
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WIZARD
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -708,7 +760,9 @@ function showWizardStep(n) {
 
   var pct = Math.round((n - 1) / 5 * 100);
   document.getElementById('wizard-progress-fill').style.width = pct + '%';
-  document.getElementById('wizard-step-label').textContent = 'Step ' + n + ' of 6';
+  var stepText = 'Step ' + n + ' of 6';
+  if (state.editingId) stepText += ' · ' + state.editingId;
+  document.getElementById('wizard-step-label').textContent = stepText;
 
   document.getElementById('btn-back').style.display = n > 1 ? '' : 'none';
   document.getElementById('btn-next').textContent   = n < 6 ? 'Next →' : 'Save Task';
@@ -1016,10 +1070,11 @@ function showReport() {
   var d         = today();
 
   var lines = [
-    '# Priority Report — ' + d, '',
+    '# Rank Report — ' + d, '',
     'Active: ' + active.length + ' | Awaiting: ' + awaiting.length + ' | Completed: ' + completed.length,
     cp.length ? 'Critical path: ' + cp.join(' → ') + ' (' + cpDur + ' days)' : '',
-    '', '| # | ID | Score | Status | Task |', '|---|---|---|---|---|',
+    '', '## Prioritized Queue', '',
+    '| # | ID | Score | Status | Task |', '|---|---|---|---|---|',
   ];
 
   active.forEach(function(t, i) {
@@ -1027,12 +1082,45 @@ function showReport() {
     lines.push('| ' + (i+1) + ' | ' + t.Task_ID + ' | ' + (t.Adjusted_WSJF||'?') + ' | ' + t.Status + ' | ' + t.Task_Name + mark + ' |');
   });
 
+  if (active.length) {
+    var sched = buildSchedule(active);
+    var ref   = new Date(); ref.setHours(0, 0, 0, 0);
+    var maxEnd = ref;
+    active.forEach(function(t) {
+      var s = sched[t.Task_ID];
+      if (s && s.end > maxEnd) maxEnd = s.end;
+    });
+    var totalDays = Math.round((maxEnd - ref) / 86400000);
+
+    lines.push('', '## Project Timeline', '');
+    lines.push('**Estimated total duration:** ' + totalDays + ' days');
+    lines.push('**Earliest completion:** ' + fmtDate(maxEnd) + ', ' + maxEnd.getFullYear());
+    lines.push('');
+    lines.push('_Schedule assumes work begins today and tasks run as early as their dependencies allow. Independent tasks can proceed in parallel._');
+    lines.push('');
+    lines.push('| # | ID | Task | Start | End | Day # | Effort |');
+    lines.push('|---|---|---|---|---|---|---|');
+    active.forEach(function(t, i) {
+      var s = sched[t.Task_ID];
+      if (!s) return;
+      var startDay = dayNum(s.start, ref);
+      var endDay   = startDay + s.dur - 1;
+      var lastDay  = new Date(s.end); lastDay.setDate(lastDay.getDate() - 1);
+      var dayRange = s.dur === 1 ? 'Day ' + startDay : 'Days ' + startDay + '–' + endDay;
+      var mark = t._on_critical_path ? ' ★' : '';
+      lines.push('| ' + (i+1) + ' | ' + t.Task_ID + ' | ' + t.Task_Name + mark +
+                 ' | ' + fmtDate(s.start) + ' | ' + fmtDate(lastDay) +
+                 ' | ' + dayRange + ' | ' + s.dur + 'd |');
+    });
+  }
+
   if (awaiting.length) {
     lines.push('', '## Awaiting External Outcome', '');
     awaiting.forEach(function(t) {
       var desc = t.Awaiting_Description ? ' (' + t.Awaiting_Description + ')' : '';
       lines.push('- **' + t.Task_Name + '** `' + t.Task_ID + '`' + desc);
     });
+    lines.push('', '_Awaiting tasks are excluded from the timeline above — they depend on external events with no fixed duration._');
   }
 
   if (completed.length) {
@@ -1040,8 +1128,8 @@ function showReport() {
     completed.forEach(function(t) { lines.push('- ~~' + t.Task_Name + '~~ `' + t.Task_ID + '`'); });
   }
 
-  lines.push('', '---', '*Generated ' + d + ' \xb7 Priority Engine*');
-  document.getElementById('report-content').textContent = lines.filter(function(l) { return l !== ''; }).join('\n') || '(empty)';
+  lines.push('', '---', '*Generated ' + d + ' \xb7 Rank by vixxiv*');
+  document.getElementById('report-content').textContent = lines.join('\n') || '(empty)';
   document.getElementById('report-modal').classList.remove('hidden');
 }
 
